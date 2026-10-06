@@ -78,6 +78,80 @@ class VisibleWebBridge {
 }
 
 @ComponentV2
+struct WebHeader {
+  @Param showBack: boolean = true;
+  @Param title: string = '网页版';
+  @Param pageUrl: string = '';
+  @Param loading: boolean = false;
+  @Param refreshEnabled: boolean = false;
+  @Event onBack: () => void = () => {};
+  @Event onRefresh: () => void = () => {};
+
+  build() {
+    Row({ space: 10 }) {
+      if (this.showBack) {
+        Button({ type: ButtonType.Circle, stateEffect: true }) {
+          SymbolGlyph($r('sys.symbol.chevron_left'))
+            .fontSize(21)
+            .fontColor([$r('app.color.primary_text')])
+        }
+        .width(44)
+        .height(44)
+        .backgroundColor($r('app.color.surface_variant'))
+        .hitTestBehavior(HitTestMode.Block)
+        .onClick(() => this.onBack())
+      }
+
+      Column({ space: 2 }) {
+        Text(this.title)
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.primary_text'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(this.pageUrl.length > 0 ? this.pageUrl.replace('https://', '') : '正在选择源站…')
+          .fontSize(10)
+          .fontColor($r('app.color.secondary_text'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Button({ type: ButtonType.Circle, stateEffect: true }) {
+        if (this.loading) {
+          LoadingProgress()
+            .width(19)
+            .height(19)
+            .color($r('app.color.primary'))
+        } else {
+          SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+            .fontSize(19)
+            .fontColor([$r('app.color.primary')])
+        }
+      }
+      .width(44)
+      .height(44)
+      .backgroundColor($r('app.color.accent_soft'))
+      .enabled(this.refreshEnabled)
+      .hitTestBehavior(HitTestMode.Block)
+      .onClick(() => this.onRefresh())
+    }
+    .width('100%')
+    .height(64)
+    .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+    .backgroundColor($r('app.color.surface'))
+    // 注意：这里必须是 Default（自身+子节点响应，阻塞兄弟节点）。
+    // 用 Block 会「阻塞子节点」→ header 里的返回/刷新按钮全部点不动（已实测踩过）。
+    .hitTestBehavior(HitTestMode.Default)
+    .zIndex(20)
+    .onTouch((event: TouchEvent) => {
+      hilog.info(0x0000, 'WebShell', 'header touch: %{public}d', event.type as number);
+    })
+  }
+}
+
+@ComponentV2
 export struct WebPage {
   @Require @Param controller: webview.WebviewController = new webview.WebviewController();
   @Param showBack: boolean = true;
@@ -103,6 +177,9 @@ export struct WebPage {
   private interfaceScript: string = '';
   private guardScript: string = '';
   private readerRecoveryQuietUntil: number = 0;
+  private refreshTicket: number = 0;
+  private pendingRefreshTicket: number = 0;
+  private refreshInFlight: boolean = false;
   private bridge: VisibleWebBridge = new VisibleWebBridge();
   private fabStartX: number = 0;
   private fabStartY: number = 0;
@@ -343,18 +420,57 @@ export struct WebPage {
   }
 
   private refreshPage(): void {
+    hilog.info(0x0000, 'WebShell', 'refresh tapped');
     if (!this.controllerAttached) {
+      hilog.error(0x0000, 'WebShell', 'refresh result: failed, controller not attached');
       return;
     }
     this.failed = false;
     this.errorText = '';
     this.loading = true;
     this.progress = 0;
+    this.refreshInFlight = true;
+    const ticket = ++this.refreshTicket;
+    this.pendingRefreshTicket = ticket;
     try {
       this.controller.refresh();
+      hilog.info(0x0000, 'WebShell', 'refresh dispatched: controller.refresh');
+      setTimeout(() => {
+        if (this.pendingRefreshTicket === ticket) {
+          this.fallbackRefresh(ticket, 'controller.refresh 未触发页面加载');
+        }
+      }, 700);
     } catch (error) {
       const value = error as Error;
-      this.errorText = value.message !== undefined && value.message.length > 0 ? value.message : '刷新失败';
+      const message = value.message !== undefined && value.message.length > 0 ? value.message : 'refresh failed';
+      this.fallbackRefresh(ticket, message);
+    }
+  }
+
+  private fallbackRefresh(ticket: number, reason: string): void {
+    hilog.warn(0x0000, 'WebShell', 'refresh fallback: %{public}s', reason);
+    this.pendingRefreshTicket = -ticket;
+    try {
+      this.controller.loadUrl(this.pageUrl);
+      hilog.info(0x0000, 'WebShell', 'refresh fallback dispatched: loadUrl');
+      setTimeout(() => {
+        if (this.refreshInFlight && this.pendingRefreshTicket === -ticket) {
+          this.pendingRefreshTicket = 0;
+          this.refreshInFlight = false;
+          this.loading = false;
+          this.failed = true;
+          this.errorText = '刷新未触发页面加载';
+          hilog.error(0x0000, 'WebShell', 'refresh result: failed, no page lifecycle after fallback');
+        }
+      }, 3000);
+    } catch (fallbackError) {
+      const fallback = fallbackError as Error;
+      const message = fallback.message !== undefined && fallback.message.length > 0 ?
+        fallback.message : 'loadUrl failed';
+      this.pendingRefreshTicket = 0;
+      this.refreshInFlight = false;
+      hilog.error(0x0000, 'WebShell', 'refresh result: failed %{public}s', message);
+      this.errorText = '刷新失败：' + message;
       this.failed = true;
       this.loading = false;
     }
@@ -424,58 +540,11 @@ export struct WebPage {
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       Column() {
-      Row({ space: 10 }) {
-        if (this.showBack) {
-          Button({ type: ButtonType.Circle, stateEffect: true }) {
-            SymbolGlyph($r('sys.symbol.chevron_left'))
-              .fontSize(21)
-              .fontColor([$r('app.color.primary_text')])
-          }
-          .width(40)
-          .height(40)
-          .backgroundColor($r('app.color.surface_variant'))
-          .onClick(() => this.handleBack())
-        }
+        Row()
+          .width('100%')
+          .height(64)
 
-        Column({ space: 2 }) {
-          Text(this.title)
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.primary_text'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-          Text(this.pageUrl.length > 0 ? this.pageUrl.replace('https://', '') : '正在选择源站…')
-            .fontSize(10)
-            .fontColor($r('app.color.secondary_text'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          if (this.loading) {
-            LoadingProgress()
-              .width(19)
-              .height(19)
-              .color($r('app.color.primary'))
-          } else {
-            SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-              .fontSize(19)
-              .fontColor([$r('app.color.primary')])
-          }
-        }
-        .width(38)
-        .height(38)
-        .backgroundColor($r('app.color.accent_soft'))
-        .enabled(this.controllerAttached)
-        .onClick(() => this.refreshPage())
-      }
-      .width('100%')
-      .padding({ left: 14, right: 14, top: 12, bottom: 8 })
-      .backgroundColor($r('app.color.surface'))
-
-      Stack({ alignContent: Alignment.Top }) {
+        Stack({ alignContent: Alignment.Top }) {
         Web({ src: '', controller: this.controller })
           .javaScriptAccess(true)
           .domStorageAccess(true)
@@ -491,6 +560,10 @@ export struct WebPage {
             this.loading = true;
             this.failed = false;
             this.errorText = '';
+            if (this.refreshInFlight) {
+              this.pendingRefreshTicket = 0;
+              hilog.info(0x0000, 'WebShell', 'refresh result: ok, page begin');
+            }
           })
           .onProgressChange((event: OnProgressChangeEvent) => {
             this.progress = event.newProgress;
@@ -511,6 +584,11 @@ export struct WebPage {
           })
           .onPageEnd((event: OnPageEndEvent) => {
             this.loading = false;
+            if (this.refreshInFlight) {
+              this.pendingRefreshTicket = 0;
+              this.refreshInFlight = false;
+              hilog.info(0x0000, 'WebShell', 'refresh result: ok, page end');
+            }
             if (!this.showBack) {
               this.fabVisible = true;
             }
@@ -524,6 +602,11 @@ export struct WebPage {
               this.loading = false;
               this.failed = true;
               this.errorText = event.error.getErrorInfo();
+              if (this.refreshInFlight) {
+                this.pendingRefreshTicket = 0;
+                this.refreshInFlight = false;
+                hilog.error(0x0000, 'WebShell', 'refresh result: failed %{public}s', this.errorText);
+              }
             }
           })
           .onHttpErrorReceive((event: OnHttpErrorReceiveEvent) => {
@@ -531,6 +614,11 @@ export struct WebPage {
               this.loading = false;
               this.failed = true;
               this.errorText = '网页请求失败（HTTP ' + event.response.getResponseCode() + '）';
+              if (this.refreshInFlight) {
+                this.pendingRefreshTicket = 0;
+                this.refreshInFlight = false;
+                hilog.error(0x0000, 'WebShell', 'refresh result: failed %{public}s', this.errorText);
+              }
             }
           })
           .width('100%')
@@ -578,10 +666,23 @@ export struct WebPage {
       }
       .width('100%')
       .layoutWeight(1)
+      .clip(true)
+      .zIndex(0)
       }
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.page_background'))
+      .zIndex(0)
+
+      WebHeader({
+        showBack: this.showBack,
+        title: this.title,
+        pageUrl: this.pageUrl,
+        loading: this.loading,
+        refreshEnabled: this.controllerAttached,
+        onBack: (): void => this.handleBack(),
+        onRefresh: (): void => this.refreshPage()
+      })
 
       if (!this.showBack && this.fabVisible && this.fabReady) {
         Row() {

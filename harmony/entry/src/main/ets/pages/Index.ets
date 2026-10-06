@@ -69,7 +69,13 @@ struct Index {
     }
     if (this.route === AppRoute.Web) {
       if (this.webAsRoot) {
-        return false;
+        try {
+          if (this.webController.accessBackward()) {
+            this.webController.backward();
+          }
+        } catch (error) {
+        }
+        return true;
       }
       return this.handleWebBack();
     }
