@@ -213,15 +213,18 @@ struct ChapterRow {
   build() {
     Row({ space: 10 }) {
       Row({ space: 10 }) {
-        Text(this.chapter.index > 0 ? this.chapter.index.toString() : '·')
-          .fontSize(11)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.primary'))
-          .width(34)
-          .height(34)
-          .textAlign(TextAlign.Center)
-          .backgroundColor($r('app.color.surface_variant'))
-          .borderRadius(11)
+        Column() {
+          Text('•')
+            .fontSize(16)
+            .fontColor($r('app.color.primary'))
+            .textAlign(TextAlign.Center)
+        }
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .width(34)
+        .height(34)
+        .backgroundColor($r('app.color.surface_variant'))
+        .borderRadius(11)
         Column({ space: 3 }) {
           Text(this.chapterTitle())
             .fontSize(14)
