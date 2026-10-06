@@ -4,6 +4,7 @@
  */
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
+import { webview } from '@kit.ArkWeb';
 import { KEY_DARK_MODE, KEY_HIDE_STATUS_BAR, settingsStore } from '../services/SettingsStore';
 import { AccountPage } from './AccountPage';
 import { DebugPage } from './DebugPage';
@@ -13,6 +14,7 @@ import { DownloadChaptersPage, DownloadsPage } from './DownloadsPage';
 import { FavoritesPage, HistoryPage } from './LibraryPages';
 import { SearchPage } from './SearchPage';
 import { SettingsPage } from './SettingsPage';
+import { WebPage } from './WebPage';
 
 export enum AppRoute {
   Shell = 0,
@@ -43,6 +45,7 @@ struct Index {
   @Local detailReturnRoute: AppRoute = AppRoute.Shell;
   @Local selectedDownloadDirectory: string = '';
   @Local selectedDownloadName: string = '';
+  private webController: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear(): void {
     this.applyPersistedChrome();
@@ -61,6 +64,9 @@ struct Index {
       this.route = AppRoute.Shell;
       this.tab = ShellTab.Discover;
       return true;
+    }
+    if (this.route === AppRoute.Web) {
+      return this.handleWebBack();
     }
     if (this.route !== AppRoute.Shell) {
       this.route = AppRoute.Shell;
@@ -127,6 +133,18 @@ struct Index {
     this.selectedDownloadDirectory = directory;
     this.selectedDownloadName = name;
     this.route = AppRoute.DownloadChapters;
+  }
+
+  private handleWebBack(): boolean {
+    try {
+      if (this.webController.accessBackward()) {
+        this.webController.backward();
+        return true;
+      }
+    } catch (error) {
+    }
+    this.closePage();
+    return true;
   }
 
   private closePage(): void {
@@ -236,9 +254,11 @@ struct Index {
       }
 
       if (this.route === AppRoute.Web) {
-        ConstructionPage({
-          route: this.route,
-          onBack: (): void => this.closePage()
+        WebPage({
+          controller: this.webController,
+          onExit: (): void => this.closePage(),
+          onOpenSettings: (): void => this.openRoute(AppRoute.Settings),
+          onOpenAccount: (): void => this.openRoute(AppRoute.Account)
         })
       }
     }
@@ -319,7 +339,7 @@ struct MorePage {
           Column() {
             this.menuRow('⚙', '设置', '外观、阅读、图源与源站', AppRoute.Settings)
             this.rule()
-            this.menuRow('◎', '网页版', '网页入口将在后续接入', AppRoute.Web)
+            this.menuRow('◎', '网页版', '打开移动版源站页面', AppRoute.Web)
           }
           .width('100%')
           .backgroundColor($r('app.color.surface'))
@@ -458,81 +478,5 @@ struct BottomTabItem {
     .backgroundColor(this.selected ? $r('app.color.nav_selected') : $r('app.color.nav_item_clear'))
     .borderRadius(23)
     .onClick(() => this.onSelect(this.tab))
-  }
-}
-
-@ComponentV2
-struct ConstructionPage {
-  @Param route: AppRoute = AppRoute.Web;
-  @Event onBack: () => void = () => {};
-
-  private title(): string {
-    return '网页版';
-  }
-
-  private nextPhase(): string {
-    if (this.route === AppRoute.Web) {
-      return '网页浏览能力尚未接入，这里不会打开阅读器';
-    }
-    return '原生发现与详情页将在下一阶段接入';
-  }
-
-  build() {
-    Column() {
-      Row({ space: 10 }) {
-        Button('‹')
-          .type(ButtonType.Circle)
-          .width(40)
-          .height(40)
-          .fontSize(28)
-          .fontColor($r('app.color.primary_text'))
-          .backgroundColor($r('app.color.surface_variant'))
-          .onClick(() => this.onBack())
-        Text(this.title())
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.primary_text'))
-      }
-      .width('100%')
-      .padding({ left: 18, right: 18, top: 16, bottom: 12 })
-
-      Column({ space: 14 }) {
-        Text('…')
-          .fontSize(26)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.on_primary'))
-          .width(62)
-          .height(62)
-          .textAlign(TextAlign.Center)
-          .backgroundColor($r('app.color.primary'))
-          .borderRadius(20)
-        Text('建设中')
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.primary_text'))
-        Text(this.nextPhase())
-          .fontSize(14)
-          .lineHeight(21)
-          .fontColor($r('app.color.secondary_text'))
-          .textAlign(TextAlign.Center)
-          .width('76%')
-        Button('返回更多')
-          .type(ButtonType.Normal)
-          .height(42)
-          .padding({ left: 24, right: 24 })
-          .fontColor($r('app.color.on_primary'))
-          .backgroundColor($r('app.color.primary'))
-          .borderRadius(14)
-          .margin({ top: 8 })
-          .onClick(() => this.onBack())
-      }
-      .justifyContent(FlexAlign.Center)
-      .width('100%')
-      .layoutWeight(1)
-      .margin({ bottom: 64 })
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.page_background'))
   }
 }

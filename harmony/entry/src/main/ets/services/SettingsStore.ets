@@ -87,7 +87,7 @@ export class SettingsStore {
   }
 
   async chapterSource(): Promise<string> {
-    return this.getString(KEY_CHAPTER_SOURCE, 'webview');
+    return this.getString(KEY_CHAPTER_SOURCE, 'api');
   }
 
   async browseSource(): Promise<string> {

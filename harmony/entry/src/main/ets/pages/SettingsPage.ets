@@ -249,7 +249,7 @@ export struct SettingsPage {
   @Local volTurn: boolean = false;
   @Local sourceProfile: string = 'fast';
   @Local browseSource: string = 'webview';
-  @Local chapterSource: string = 'webview';
+  @Local chapterSource: string = 'api';
   @Local chapterEndComments: boolean = true;
   @Local imageCacheLimitMb: number = 1024;
 
@@ -280,7 +280,7 @@ export struct SettingsPage {
       this.browseSource = this.validBinarySource(
         await settingsStore.getString(KEY_BROWSE_SOURCE, 'webview'));
       this.chapterSource = this.validBinarySource(
-        await settingsStore.getString(KEY_CHAPTER_SOURCE, 'webview'));
+        await settingsStore.getString(KEY_CHAPTER_SOURCE, 'api'));
       this.chapterEndComments = await settingsStore.getBool(KEY_CHAPTER_END_COMMENTS, true);
       this.imageCacheLimitMb = await settingsStore.getInt(KEY_IMAGE_CACHE_LIMIT_MB, 1024);
       await UrlManager.bootstrap();
