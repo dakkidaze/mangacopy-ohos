@@ -1,0 +1,89 @@
+name: copymanga_flutter
+description: "CopyManga Flutter 跨平台版（Android / iOS）"
+publish_to: 'none'
+
+# 版本号唯一源：versionName+versionCode → 例如 1.0.0+1
+# Android: versionName=1.0.0, versionCode=1
+# iOS: CFBundleShortVersionString=1.0.0, CFBundleVersion=1
+# 滚动规则见 workflow.md
+version: 0.3.1+301
+
+environment:
+  # 上游 jimytao 为 ^3.11.4；本项目使用 CPF-Flutter oh-3.35.7（Dart 3.9.2），故放宽。
+  sdk: '>=3.9.0 <4.0.0'
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.8
+  flutter_inappwebview: ^6.1.5
+  shared_preferences: ^2.5.4
+  cached_network_image: ^3.4.1
+  # 直接依赖：自定义带字节上限的 CacheManager（见 lib/image_cache_store.dart）
+  flutter_cache_manager: ^3.4.1
+  photo_view: ^0.15.0
+  http: ^1.6.0
+  scrollable_positioned_list: ^0.3.8
+  path_provider: ^2.1.5
+  connectivity_plus: ^7.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^6.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  assets:
+    - assets/js/
+    - assets/icon/
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/to/resolution-aware-images
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/to/asset-from-package
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package

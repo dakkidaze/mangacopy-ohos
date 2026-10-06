@@ -1,0 +1,33 @@
+# 让插件在 HarmonyOS (ohos) 上可用的依赖覆盖。
+# 覆盖 key 用「原始插件名」；各主包内部会自行引入对应的 *_ohos 平台实现
+# （见 CPF-Flutter 适配表 docs/ThirdpartyLibrarites.md）。
+dependency_overrides:
+  shared_preferences:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      ref: br_shared_preferences-v2.5.4_ohos
+      path: packages/shared_preferences/shared_preferences
+
+  path_provider:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      ref: br_path_provider-v2.1.5_ohos
+      path: packages/path_provider/path_provider
+
+  connectivity_plus:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_plus_plugins.git
+      ref: br_connectivity_plus-v7.0.0_ohos
+      path: packages/connectivity_plus/connectivity_plus
+
+  sqflite:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_sqflite.git
+      ref: br_v2.4.2_ohos
+      path: sqflite
+
+  flutter_inappwebview:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_inappwebview.git
+      ref: br_v6.1.5_ohos
+      path: flutter_inappwebview
