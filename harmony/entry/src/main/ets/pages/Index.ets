@@ -5,9 +5,11 @@
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { KEY_DARK_MODE, KEY_HIDE_STATUS_BAR, settingsStore } from '../services/SettingsStore';
+import { AccountPage } from './AccountPage';
 import { DebugPage } from './DebugPage';
 import { DetailPage } from './DetailPage';
 import { DiscoverPage } from './DiscoverPage';
+import { FavoritesPage, HistoryPage } from './LibraryPages';
 import { SearchPage } from './SearchPage';
 import { SettingsPage } from './SettingsPage';
 
@@ -167,6 +169,30 @@ struct Index {
         })
       }
 
+      if (this.route === AppRoute.Account) {
+        AccountPage({
+          onBack: (): void => this.closePage(),
+          onOpenFavorites: (): void => this.openRoute(AppRoute.Favorites),
+          onOpenHistory: (): void => this.openRoute(AppRoute.History)
+        })
+      }
+
+      if (this.route === AppRoute.Favorites) {
+        FavoritesPage({
+          onBack: (): void => this.closePage(),
+          onOpenAccount: (): void => this.openRoute(AppRoute.Account),
+          onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Favorites)
+        })
+      }
+
+      if (this.route === AppRoute.History) {
+        HistoryPage({
+          onBack: (): void => this.closePage(),
+          onOpenAccount: (): void => this.openRoute(AppRoute.Account),
+          onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.History)
+        })
+      }
+
       if (this.route === AppRoute.Settings) {
         SettingsPage({
           onBack: (): void => this.closePage(),
@@ -180,8 +206,7 @@ struct Index {
         })
       }
 
-      if (this.route === AppRoute.Account || this.route === AppRoute.Favorites ||
-        this.route === AppRoute.History || this.route === AppRoute.Downloads || this.route === AppRoute.Web) {
+      if (this.route === AppRoute.Downloads || this.route === AppRoute.Web) {
         ConstructionPage({
           route: this.route,
           onBack: (): void => this.closePage()
@@ -409,35 +434,17 @@ struct BottomTabItem {
 
 @ComponentV2
 struct ConstructionPage {
-  @Param route: AppRoute = AppRoute.Account;
+  @Param route: AppRoute = AppRoute.Downloads;
   @Event onBack: () => void = () => {};
 
   private title(): string {
-    if (this.route === AppRoute.Account) {
-      return '账号';
-    }
-    if (this.route === AppRoute.Favorites) {
-      return '收藏';
-    }
-    if (this.route === AppRoute.History) {
-      return '历史';
-    }
     if (this.route === AppRoute.Downloads) {
       return '我的下载';
     }
-    if (this.route === AppRoute.Web) {
-      return '网页版';
-    }
-    if (this.route === AppRoute.Search) {
-      return '搜索';
-    }
-    return '漫画详情';
+    return '网页版';
   }
 
   private nextPhase(): string {
-    if (this.route === AppRoute.Account || this.route === AppRoute.Favorites || this.route === AppRoute.History) {
-      return '账号与书架能力将在后续阶段接入';
-    }
     if (this.route === AppRoute.Downloads) {
       return '下载管理将在后续阶段接入';
     }

@@ -5,6 +5,7 @@
 import { ApiDomainManager } from '../services/ApiDomainManager';
 import { ApiClient, ApiException } from '../services/ApiClient';
 import { CopyApiSource } from '../services/CopyApiSource';
+import { authStore, CookieEntry } from '../services/AuthStore';
 import { MangaSummary } from '../model/Models';
 
 export const BROWSE_PAGE_SIZE: number = 21;
@@ -15,7 +16,54 @@ const sharedBrowseSource: CopyApiSource = new CopyApiSource(browseClient);
 let browseReady: boolean = false;
 let browsePreparing: Promise<void> | undefined = undefined;
 
+@ObservedV2
+export class BrowseSessionState {
+  @Trace ready: boolean = false;
+  @Trace loggedIn: boolean = false;
+  @Trace hasToken: boolean = false;
+  @Trace cookieCount: number = 0;
+  @Trace username: string = '';
+
+  sync(username: string = ''): void {
+    this.ready = true;
+    this.hasToken = authStore.getToken().length > 0;
+    this.loggedIn = this.hasToken;
+    this.cookieCount = authStore.getCookieEntries().length;
+    this.username = this.loggedIn ? username : '';
+  }
+}
+
+export const browseSession: BrowseSessionState = new BrowseSessionState();
+
+function restoreClientSession(): void {
+  const cookies = new Map<string, string>();
+  const entries: CookieEntry[] = authStore.getCookieEntries();
+  for (let i = 0; i < entries.length; i++) {
+    cookies.set(entries[i].key, entries[i].value);
+  }
+  browseClient.restoreCookies(cookies);
+  browseClient.setToken(authStore.getToken());
+  browseSession.sync();
+}
+
+export function syncBrowseSession(username: string = ''): void {
+  browseSession.sync(username);
+}
+
+export async function reloadBrowseSession(): Promise<void> {
+  await authStore.load();
+  restoreClientSession();
+}
+
+export async function clearBrowseSession(): Promise<void> {
+  await authStore.clear();
+  browseClient.clearSession();
+  browseSession.sync();
+}
+
 async function prepareBrowseApi(): Promise<void> {
+  await authStore.load();
+  restoreClientSession();
   const seeded = await browseDomains.bootstrapFromNetwork4('https://api.copy202601.com');
   if (seeded.length > 0 && browseDomains.candidates.indexOf(seeded) < 0) {
     browseDomains.candidates.unshift(seeded);
@@ -124,10 +172,12 @@ export class MangaPagingController {
 
   readonly dataSource: MangaListDataSource = new MangaListDataSource();
   private loader: MangaPageLoader = emptyPageLoader;
+  private pageSize: number = BROWSE_PAGE_SIZE;
   private revision: number = 0;
 
-  constructor(loader: MangaPageLoader = emptyPageLoader) {
+  constructor(loader: MangaPageLoader = emptyPageLoader, pageSize: number = BROWSE_PAGE_SIZE) {
     this.loader = loader;
+    this.pageSize = pageSize;
   }
 
   setLoader(loader: MangaPageLoader): void {
@@ -167,7 +217,7 @@ export class MangaPagingController {
       }
       this.dataSource.replace(items);
       this.itemCount = items.length;
-      this.hasMore = items.length >= BROWSE_PAGE_SIZE;
+      this.hasMore = items.length >= this.pageSize;
       this.state = items.length === 0 ? BrowseLoadState.Empty : BrowseLoadState.Content;
       this.footerText = this.hasMore ? '' : '没有更多了';
     } catch (error) {
@@ -202,7 +252,7 @@ export class MangaPagingController {
       }
       this.dataSource.append(items);
       this.itemCount += items.length;
-      this.hasMore = items.length >= BROWSE_PAGE_SIZE;
+      this.hasMore = items.length >= this.pageSize;
       this.footerText = this.hasMore ? '' : '没有更多了';
     } catch (error) {
       if (ticket !== this.revision) {
@@ -269,7 +319,7 @@ struct MangaGridCard {
 }
 
 @ComponentV2
-struct BrowseStatePanel {
+export struct BrowseStatePanel {
   @Param state: BrowseLoadState = BrowseLoadState.Idle;
   @Param errorText: string = '';
   @Param idleText: string = '准备加载';
@@ -334,7 +384,7 @@ struct BrowseStatePanel {
 }
 
 @ComponentV2
-struct PagingFooter {
+export struct PagingFooter {
   @Param loading: boolean = false;
   @Param hasMore: boolean = true;
   @Param message: string = '';
