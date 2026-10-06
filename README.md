@@ -60,7 +60,7 @@
 - 构建未签名 HAP：
 
   ```bash
-  tool/build_hap_unsigned.sh release    # 也可 debug
+  # 构建脚本不入库（在本地工具目录 ~/ohos-tools/ 下运行）
   ```
 
   产物：`ohos/entry/build/default/outputs/default/entry-default-unsigned.hap`
