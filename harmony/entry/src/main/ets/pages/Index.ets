@@ -11,6 +11,7 @@ import { DebugPage } from './DebugPage';
 import { DetailPage } from './DetailPage';
 import { DiscoverPage } from './DiscoverPage';
 import { DownloadChaptersPage, DownloadsPage } from './DownloadsPage';
+import { HiddenCollectorHost } from './HiddenCollectorHost';
 import { FavoritesPage, HistoryPage } from './LibraryPages';
 import { SearchPage } from './SearchPage';
 import { SettingsPage } from './SettingsPage';
@@ -331,6 +332,9 @@ struct Index {
           onOpenAccount: (): void => this.openRoute(AppRoute.Account)
         })
       }
+
+      // 隐藏收图页：常驻但不可见、不吃触摸，供「网页收图」图源使用。
+      HiddenCollectorHost()
     }
     .width('100%')
     .height('100%')

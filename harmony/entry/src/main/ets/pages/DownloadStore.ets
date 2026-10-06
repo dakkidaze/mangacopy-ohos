@@ -9,6 +9,7 @@ import { kDesktopUserAgent } from '../services/ApiHeaders';
 import { Chapter } from '../model/Models';
 import { wrapResolution } from '../shared/Images';
 import { getBrowseSource } from './BrowseSupport';
+import { loadChapterImages } from './HiddenCollector';
 import { UrlManager } from '../services/UrlManager';
 
 const DOWNLOAD_FOLDER: string = 'downloads';
@@ -353,8 +354,8 @@ export class DownloadStore {
       this.writeChapterMeta(chapterDirectory, request);
       await this.updateChaptersManifest(comicDirectory, request);
 
-      const source = await getBrowseSource();
-      const urls = await source.pages(request.comicId, request.chapterId);
+      // 图源由设置决定：chapterSource='webview' 走隐藏收图，否则走 API。
+      const urls = await loadChapterImages(request.comicId, request.chapterId);
       if (task.cancelRequested) {
         throw new DownloadCancelledError();
       }

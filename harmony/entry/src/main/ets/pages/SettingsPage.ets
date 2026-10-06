@@ -178,6 +178,46 @@ struct SettingsChoiceOption {
 }
 
 @ComponentV2
+struct SettingsChapterSourceOption {
+  @Param title: string = '';
+  @Param subtitle: string = '';
+  @Param value: string = '';
+  @Param selected: string = '';
+  @Event onSelect: (value: string) => void = (_value: string) => {};
+
+  build() {
+    Row({ space: 12 }) {
+      Text(this.value === this.selected ? '●' : '○')
+        .fontSize(18)
+        .fontColor(this.value === this.selected ? $r('app.color.accent') : $r('app.color.secondary_text'))
+      Column({ space: 4 }) {
+        Text(this.title)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.primary_text'))
+        Text(this.subtitle)
+          .fontSize(12)
+          .fontColor($r('app.color.secondary_text'))
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      Text(this.value === this.selected ? '已选' : '')
+        .fontSize(11)
+        .fontColor($r('app.color.accent'))
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(this.value === this.selected ? $r('app.color.accent_soft') : $r('app.color.surface'))
+    .border({
+      width: 1,
+      color: this.value === this.selected ? $r('app.color.accent') : $r('app.color.divider')
+    })
+    .borderRadius(18)
+    .onClick(() => this.onSelect(this.value))
+  }
+}
+
+@ComponentV2
 struct SettingsDomainLine {
   @Param kind: string = '';
   @Param domain: string = '';
@@ -600,14 +640,14 @@ export struct SettingsPage {
           Column({ space: 10 }) {
             SettingsChoiceOption({
               title: '网页收图',
-              subtitle: '兼容性较好，部分章节加载较慢',
+              subtitle: '模拟浏览器滚动收集，较慢但兜底',
               value: 'webview',
               selected: this.chapterSource,
               onSelect: (value: string): void => { this.selectChapterSource(value); }
             })
             SettingsChoiceOption({
               title: 'API 取图',
-              subtitle: '速度更快，依赖官方接口',
+              subtitle: '依赖官方接口，可拿全章',
               value: 'api',
               selected: this.chapterSource,
               onSelect: (value: string): void => { this.selectChapterSource(value); }
