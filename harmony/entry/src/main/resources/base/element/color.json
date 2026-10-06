@@ -25,6 +25,14 @@
       "value": "#FCFBF7"
     },
     {
+      "name": "nav_selected",
+      "value": "#DDEBED"
+    },
+    {
+      "name": "nav_shadow",
+      "value": "#300B171C"
+    },
+    {
       "name": "primary",
       "value": "#214F5E"
     },

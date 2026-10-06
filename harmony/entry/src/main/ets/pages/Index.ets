@@ -454,39 +454,61 @@ struct BottomBar {
   }
 
   build() {
-    Row() {
-      this.tabItem($r('sys.symbol.house'), '发现', ShellTab.Discover)
-      this.tabItem($r('sys.symbol.more'), '更多', ShellTab.More)
+    Column() {
+      Row({ space: 8 }) {
+        BottomTabItem({
+          symbol: $r('sys.symbol.house'),
+          label: '发现',
+          tab: ShellTab.Discover,
+          selected: this.selected === ShellTab.Discover,
+          onSelect: (tab: ShellTab): void => this.onSelect(tab)
+        })
+        BottomTabItem({
+          symbol: $r('sys.symbol.more'),
+          label: '更多',
+          tab: ShellTab.More,
+          selected: this.selected === ShellTab.More,
+          onSelect: (tab: ShellTab): void => this.onSelect(tab)
+        })
+      }
+      .width('100%')
+      .height(56)
+      .padding({ left: 6, right: 6, top: 5, bottom: 5 })
+      .backgroundColor($r('app.color.nav_surface'))
+      .borderRadius(28)
+      .shadow({ radius: 18, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 6 })
     }
     .width('100%')
-    .height(56 + this.safeBottom())
-    .padding({ left: 24, right: 24, top: 5, bottom: 7 + this.safeBottom() })
-    .backgroundColor($r('app.color.nav_surface'))
-    .border({ width: { top: 1 }, color: $r('app.color.divider') })
+    .padding({ left: 12, right: 12, top: 6, bottom: this.safeBottom() + 8 })
+    .backgroundColor($r('app.color.page_background'))
   }
+}
 
-  @Builder
-  tabItem(symbol: Resource, label: string, tab: ShellTab) {
+@ComponentV2
+struct BottomTabItem {
+  @Param symbol: Resource = $r('sys.symbol.house');
+  @Param label: string = '';
+  @Param tab: ShellTab = ShellTab.Discover;
+  @Param selected: boolean = false;
+  @Event onSelect: (tab: ShellTab) => void = (_tab: ShellTab) => {};
+
+  build() {
     Column({ space: 2 }) {
-      SymbolGlyph(symbol)
-        .fontSize(24)
-        .fontColor([tab === this.selected ? $r('app.color.primary') : $r('app.color.secondary_text')])
-      Text(label)
+      SymbolGlyph(this.symbol)
+        .fontSize(23)
+        .fontColor([this.selected ? $r('app.color.primary') : $r('app.color.secondary_text')])
+      Text(this.label)
         .fontSize(11)
         .lineHeight(14)
-        .fontWeight(tab === this.selected ? FontWeight.Bold : FontWeight.Medium)
-        .fontColor(tab === this.selected ? $r('app.color.primary') : $r('app.color.secondary_text'))
-      Row()
-        .width(18)
-        .height(2)
-        .opacity(tab === this.selected ? 1 : 0)
-        .backgroundColor($r('app.color.primary'))
-        .borderRadius(1)
+        .fontWeight(this.selected ? FontWeight.Bold : FontWeight.Medium)
+        .fontColor(this.selected ? $r('app.color.primary') : $r('app.color.secondary_text'))
     }
     .justifyContent(FlexAlign.Center)
     .layoutWeight(1)
-    .height('100%')
-    .onClick(() => this.onSelect(tab))
+    .height(46)
+    .backgroundColor(this.selected ? $r('app.color.nav_selected') : $r('app.color.nav_surface'))
+    .borderRadius(23)
+    .onClick(() => this.onSelect(this.tab))
   }
 }
 
