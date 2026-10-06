@@ -70,6 +70,7 @@ class VisibleWebBridge {
 @ComponentV2
 export struct WebPage {
   @Require @Param controller: webview.WebviewController = new webview.WebviewController();
+  @Param showBack: boolean = true;
   @Event onExit: () => void = () => {};
   @Event onOpenSettings: () => void = () => {};
   @Event onOpenAccount: () => void = () => {};
@@ -245,15 +246,17 @@ export struct WebPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.chevron_left'))
-            .fontSize(21)
-            .fontColor([$r('app.color.primary_text')])
+        if (this.showBack) {
+          Button({ type: ButtonType.Circle, stateEffect: true }) {
+            SymbolGlyph($r('sys.symbol.chevron_left'))
+              .fontSize(21)
+              .fontColor([$r('app.color.primary_text')])
+          }
+          .width(40)
+          .height(40)
+          .backgroundColor($r('app.color.surface_variant'))
+          .onClick(() => this.handleBack())
         }
-        .width(40)
-        .height(40)
-        .backgroundColor($r('app.color.surface_variant'))
-        .onClick(() => this.handleBack())
 
         Column({ space: 2 }) {
           Text(this.title)

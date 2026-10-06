@@ -68,9 +68,25 @@ struct Index {
       return true;
     }
     if (this.route === AppRoute.Web) {
+      if (this.webAsRoot) {
+        return false;
+      }
       return this.handleWebBack();
     }
-    if (this.route !== AppRoute.Shell) {
+    if (this.route === AppRoute.Debug) {
+      this.route = AppRoute.Settings;
+      return true;
+    }
+    if (this.route === AppRoute.Settings && this.webAsRoot) {
+      this.route = AppRoute.Web;
+      return true;
+    }
+    if (this.webAsRoot && (this.route === AppRoute.Account || this.route === AppRoute.Favorites ||
+      this.route === AppRoute.History)) {
+      this.route = AppRoute.Web;
+      return true;
+    }
+    if (this.route !== AppRoute.Shell && this.route !== AppRoute.Startup) {
       this.route = AppRoute.Shell;
       this.tab = ShellTab.More;
       return true;
@@ -85,27 +101,37 @@ struct Index {
   private async applyPersistedChrome(): Promise<void> {
     const ctx = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (ctx === undefined) {
+      this.webAsRoot = false;
+      this.route = AppRoute.Shell;
       return;
     }
-    const dark = await settingsStore.getBool(KEY_DARK_MODE, false);
-    const hidden = await settingsStore.getBool(KEY_HIDE_STATUS_BAR, false);
-    const colorMode = dark ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
-      ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
     try {
-      ctx.getApplicationContext().setColorMode(colorMode);
-      const mainWindow = await window.getLastWindow(ctx);
-      await mainWindow.setWindowSystemBarEnable(hidden ? ['navigation'] : ['status', 'navigation']);
-      let insetVp = 8;
+      const dark = await settingsStore.getBool(KEY_DARK_MODE, false);
+      const hidden = await settingsStore.getBool(KEY_HIDE_STATUS_BAR, false);
+      const browseSource = await settingsStore.browseSource();
+      const colorMode = dark ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
+        ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+      this.webAsRoot = browseSource === 'webview';
+      this.route = this.webAsRoot ? AppRoute.Web : AppRoute.Shell;
       try {
-        const avoid = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
-        const measuredVp = mainWindow.getUIContext().px2vp(avoid.bottomRect.height);
-        insetVp = measuredVp > 0 ? measuredVp : 8;
+        ctx.getApplicationContext().setColorMode(colorMode);
+        const mainWindow = await window.getLastWindow(ctx);
+        await mainWindow.setWindowSystemBarEnable(hidden ? ['navigation'] : ['status', 'navigation']);
+        let insetVp = 8;
+        try {
+          const avoid = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+          const measuredVp = mainWindow.getUIContext().px2vp(avoid.bottomRect.height);
+          insetVp = measuredVp > 0 ? measuredVp : 8;
+        } catch (error) {
+          insetVp = 8;
+        }
+        AppStorage.setOrCreate<number>('navIndicatorVp', insetVp);
+        this.navIndicatorVp = insetVp;
       } catch (error) {
-        insetVp = 8;
       }
-      AppStorage.setOrCreate<number>('navIndicatorVp', insetVp);
-      this.navIndicatorVp = insetVp;
     } catch (error) {
+      this.webAsRoot = false;
+      this.route = AppRoute.Shell;
     }
   }
 
@@ -149,6 +175,26 @@ struct Index {
     return true;
   }
 
+  private openSettingsFromWeb(): void {
+    this.route = AppRoute.Settings;
+  }
+
+  private backFromSettings(): void {
+    if (this.webAsRoot) {
+      this.route = AppRoute.Web;
+      return;
+    }
+    this.closePage();
+  }
+
+  private backFromAccount(): void {
+    if (this.webAsRoot) {
+      this.route = AppRoute.Web;
+      return;
+    }
+    this.closePage();
+  }
+
   private closePage(): void {
     this.route = AppRoute.Shell;
     this.tab = ShellTab.More;
@@ -161,6 +207,21 @@ struct Index {
         .height('100%')
         .backgroundColor($r('app.color.page_background'))
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+
+      if (this.route === AppRoute.Startup) {
+        Column({ space: 12 }) {
+          LoadingProgress()
+            .width(36)
+            .height(36)
+            .color($r('app.color.primary'))
+          Text('正在准备…')
+            .fontSize(13)
+            .fontColor($r('app.color.secondary_text'))
+        }
+        .justifyContent(FlexAlign.Center)
+        .width('100%')
+        .height('100%')
+      }
 
       if (this.route === AppRoute.Shell) {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -205,7 +266,7 @@ struct Index {
 
       if (this.route === AppRoute.Account) {
         AccountPage({
-          onBack: (): void => this.closePage(),
+          onBack: (): void => this.backFromAccount(),
           onOpenFavorites: (): void => this.openRoute(AppRoute.Favorites),
           onOpenHistory: (): void => this.openRoute(AppRoute.History)
         })
@@ -213,7 +274,7 @@ struct Index {
 
       if (this.route === AppRoute.Favorites) {
         FavoritesPage({
-          onBack: (): void => this.closePage(),
+          onBack: (): void => this.backFromAccount(),
           onOpenAccount: (): void => this.openRoute(AppRoute.Account),
           onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Favorites)
         })
@@ -221,7 +282,7 @@ struct Index {
 
       if (this.route === AppRoute.History) {
         HistoryPage({
-          onBack: (): void => this.closePage(),
+          onBack: (): void => this.backFromAccount(),
           onOpenAccount: (): void => this.openRoute(AppRoute.Account),
           onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.History)
         })
@@ -244,7 +305,7 @@ struct Index {
 
       if (this.route === AppRoute.Settings) {
         SettingsPage({
-          onBack: (): void => this.closePage(),
+          onBack: (): void => this.backFromSettings(),
           onOpenDebug: (): void => this.openRoute(AppRoute.Debug)
         })
       }
@@ -258,8 +319,9 @@ struct Index {
       if (this.route === AppRoute.Web) {
         WebPage({
           controller: this.webController,
+          showBack: !this.webAsRoot,
           onExit: (): void => this.closePage(),
-          onOpenSettings: (): void => this.openRoute(AppRoute.Settings),
+          onOpenSettings: (): void => this.openSettingsFromWeb(),
           onOpenAccount: (): void => this.openRoute(AppRoute.Account)
         })
       }
