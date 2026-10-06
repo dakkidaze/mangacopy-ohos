@@ -16,7 +16,8 @@ const GM_METHODS: string[] = [
   'setFab',
   'setLoadingDialog',
   'setLoadingDialogProgress',
-  'toggleStatusBar'
+  'toggleStatusBar',
+  'onReaderDetected'
 ];
 
 class VisibleWebBridge {
@@ -24,6 +25,7 @@ class VisibleWebBridge {
   onOpenSettings: () => void = () => {};
   onEnterProfile: () => void = () => {};
   onTitle: (value: string) => void = (_value: string) => {};
+  onReaderDetectedCallback: () => void = () => {};
 
   loadComic(url: string): void {
     this.onReaderBlocked(url);
@@ -59,6 +61,10 @@ class VisibleWebBridge {
 
   toggleStatusBar(): void {
   }
+
+  onReaderDetected(): void {
+    this.onReaderDetectedCallback();
+  }
 }
 
 @ComponentV2
@@ -78,6 +84,8 @@ export struct WebPage {
   private controllerAttached: boolean = false;
   private gmScript: string = '';
   private interfaceScript: string = '';
+  private guardScript: string = '';
+  private readerRecoveryQuietUntil: number = 0;
   private bridge: VisibleWebBridge = new VisibleWebBridge();
 
   aboutToAppear(): void {
@@ -98,6 +106,8 @@ export struct WebPage {
         context.resourceManager.getRawFileContentSync('js/gm_shim.js'));
       this.interfaceScript = decoder.decodeToString(
         context.resourceManager.getRawFileContentSync('js/i.js'));
+      this.guardScript = decoder.decodeToString(
+        context.resourceManager.getRawFileContentSync('js/guard.js'));
     } catch (error) {
       this.errorText = '页面脚本读取失败';
       this.failed = true;
@@ -136,6 +146,9 @@ export struct WebPage {
         this.title = value;
       }
     };
+    this.bridge.onReaderDetectedCallback = (): void => {
+      this.handleReaderDetected();
+    };
   }
 
   private onControllerAttached(): void {
@@ -172,17 +185,37 @@ export struct WebPage {
     }
   }
 
+  private handleReaderDetected(): void {
+    const now = Date.now();
+    if (now < this.readerRecoveryQuietUntil) {
+      return;
+    }
+    this.readerRecoveryQuietUntil = now + 3000;
+    this.showToast('阅读器开发中');
+    this.pageUrl = UrlManager.activeUrl + '/h5/index';
+    this.failed = false;
+    this.errorText = '';
+    this.loading = true;
+    this.progress = 0;
+    try {
+      this.controller.loadUrl(this.pageUrl);
+    } catch (error) {
+      const value = error as Error;
+      this.errorText = value.message !== undefined && value.message.length > 0 ?
+        value.message : '返回网页首页失败';
+      this.failed = true;
+      this.loading = false;
+    }
+  }
+
   private async injectScripts(): Promise<void> {
-    if (this.gmScript.length === 0 || this.interfaceScript.length === 0) {
+    if (this.gmScript.length === 0 || this.interfaceScript.length === 0 || this.guardScript.length === 0) {
       return;
     }
     try {
       await this.controller.runJavaScript(this.gmScript);
       await this.controller.runJavaScript(this.interfaceScript);
-      // 诊断用：每秒上报当前 URL（SPA 前端路由变化也能看到），日志经 onConsole 转 hilog
-      await this.controller.runJavaScript(
-        "if(!window.__cmUrlProbe){window.__cmUrlProbe=setInterval(function(){console.log('CMURL='+location.href);},1500);}"
-      );
+      await this.controller.runJavaScript(this.guardScript);
     } catch (error) {
       const value = error as Error;
       this.errorText = value.message !== undefined && value.message.length > 0 ?

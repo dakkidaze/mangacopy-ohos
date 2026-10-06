@@ -17,6 +17,7 @@ import { SettingsPage } from './SettingsPage';
 import { WebPage } from './WebPage';
 
 export enum AppRoute {
+  Startup = -1,
   Shell = 0,
   Account = 1,
   Favorites = 2,
@@ -38,13 +39,14 @@ enum ShellTab {
 @Entry
 @ComponentV2
 struct Index {
-  @Local route: AppRoute = AppRoute.Shell;
+  @Local route: AppRoute = AppRoute.Startup;
   @Local tab: ShellTab = ShellTab.Discover;
   @Local navIndicatorVp: number = 8;
   @Local selectedMangaId: string = '';
   @Local detailReturnRoute: AppRoute = AppRoute.Shell;
   @Local selectedDownloadDirectory: string = '';
   @Local selectedDownloadName: string = '';
+  @Local webAsRoot: boolean = false;
   private webController: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear(): void {
