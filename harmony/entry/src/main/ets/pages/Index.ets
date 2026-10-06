@@ -98,12 +98,12 @@ struct Index {
         Stack({ alignContent: Alignment.Bottom }) {
           if (this.tab === ShellTab.Discover) {
             DiscoverPlaceholder({
-              bottomInset: 70 + Math.max(8, this.navIndicatorVp),
+              bottomInset: 48,
               onSearch: (): void => this.openRoute(AppRoute.Search)
             })
           } else {
             MorePage({
-              bottomInset: 70 + Math.max(8, this.navIndicatorVp),
+              bottomInset: 48,
               onOpen: (route: AppRoute): void => this.openRoute(route)
             })
           }
@@ -279,6 +279,7 @@ struct DiscoverPlaceholder {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.page_background'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -395,6 +396,7 @@ struct MorePage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.page_background'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
   @Builder
@@ -488,7 +490,8 @@ struct BottomBar {
       .shadow({ radius: 18, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 6 })
     }
     .width('100%')
-    .padding({ left: 12, right: 12, top: 6, bottom: this.safeBottom() + 8 })
+    .padding({ left: 12, right: 12, top: 6, bottom: 0 })
+    .margin({ bottom: -(this.safeBottom() - 20) })
   }
 }
 
