@@ -88,14 +88,22 @@ struct Index {
 
   build() {
     Stack() {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.page_background'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+
       if (this.route === AppRoute.Shell) {
-        Column() {
+        Stack({ alignContent: Alignment.Bottom }) {
           if (this.tab === ShellTab.Discover) {
             DiscoverPlaceholder({
+              bottomInset: 70 + Math.max(8, this.navIndicatorVp),
               onSearch: (): void => this.openRoute(AppRoute.Search)
             })
           } else {
             MorePage({
+              bottomInset: 70 + Math.max(8, this.navIndicatorVp),
               onOpen: (route: AppRoute): void => this.openRoute(route)
             })
           }
@@ -109,7 +117,7 @@ struct Index {
         }
         .width('100%')
         .height('100%')
-        .backgroundColor($r('app.color.page_background'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
 
       if (this.route === AppRoute.Settings) {
@@ -142,6 +150,7 @@ struct Index {
 
 @ComponentV2
 struct DiscoverPlaceholder {
+  @Param bottomInset: number = 78;
   @Event onSearch: () => void = () => {};
 
   build() {
@@ -260,16 +269,15 @@ struct DiscoverPlaceholder {
           .padding(17)
           .backgroundColor($r('app.color.surface_variant'))
           .borderRadius(20)
-          .margin({ bottom: 24 })
         }
         .width('100%')
-        .padding({ left: 16, right: 16 })
+        .padding({ left: 16, right: 16, bottom: this.bottomInset })
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
     }
     .width('100%')
-    .layoutWeight(1)
+    .height('100%')
     .backgroundColor($r('app.color.page_background'))
   }
 
@@ -303,6 +311,7 @@ struct DiscoverPlaceholder {
 
 @ComponentV2
 struct MorePage {
+  @Param bottomInset: number = 78;
   @Event onOpen: (route: AppRoute) => void = (_route: AppRoute) => {};
 
   build() {
@@ -376,16 +385,15 @@ struct MorePage {
           .width('100%')
           .backgroundColor($r('app.color.surface'))
           .borderRadius(22)
-          .margin({ bottom: 24 })
         }
         .width('100%')
-        .padding({ left: 16, right: 16 })
+        .padding({ left: 16, right: 16, bottom: this.bottomInset })
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
     }
     .width('100%')
-    .layoutWeight(1)
+    .height('100%')
     .backgroundColor($r('app.color.page_background'))
   }
 
@@ -475,12 +483,12 @@ struct BottomBar {
       .height(56)
       .padding({ left: 6, right: 6, top: 5, bottom: 5 })
       .backgroundColor($r('app.color.nav_surface'))
+      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
       .borderRadius(28)
       .shadow({ radius: 18, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 6 })
     }
     .width('100%')
     .padding({ left: 12, right: 12, top: 6, bottom: this.safeBottom() + 8 })
-    .backgroundColor($r('app.color.page_background'))
   }
 }
 
@@ -506,7 +514,7 @@ struct BottomTabItem {
     .justifyContent(FlexAlign.Center)
     .layoutWeight(1)
     .height(46)
-    .backgroundColor(this.selected ? $r('app.color.nav_selected') : $r('app.color.nav_surface'))
+    .backgroundColor(this.selected ? $r('app.color.nav_selected') : $r('app.color.nav_item_clear'))
     .borderRadius(23)
     .onClick(() => this.onSelect(this.tab))
   }

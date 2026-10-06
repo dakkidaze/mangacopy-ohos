@@ -22,11 +22,15 @@
     },
     {
       "name": "nav_surface",
-      "value": "#FCFBF7"
+      "value": "#E8FFFEFB"
     },
     {
       "name": "nav_selected",
-      "value": "#DDEBED"
+      "value": "#EEDDEBED"
+    },
+    {
+      "name": "nav_item_clear",
+      "value": "#00000000"
     },
     {
       "name": "nav_shadow",
