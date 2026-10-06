@@ -2,6 +2,12 @@
 import { Chapter, MangaDetail } from '../model/Models';
 import { BrowseLoadState, describeBrowseError, getBrowseSource } from './BrowseSupport';
 import { CommentPanel, CommentPanelTab } from './CommentPanel';
+import {
+  ChapterDownloadRequest,
+  ChapterDownloadState,
+  ChapterDownloadStatus,
+  downloadStore
+} from './DownloadStore';
 
 function emptyDetail(): MangaDetail {
   return new MangaDetail('', '', '', '', '', '', '', '', []);
@@ -192,6 +198,7 @@ struct DetailOverview {
 @ComponentV2
 struct ChapterRow {
   @Param chapter: Chapter = new Chapter('', '', 0, 0);
+  @Param downloadState: ChapterDownloadState = new ChapterDownloadState();
   @Event onRead: (chapter: Chapter) => void = (_chapter: Chapter) => {};
   @Event onComments: (chapter: Chapter) => void = (_chapter: Chapter) => {};
   @Event onDownload: (chapter: Chapter) => void = (_chapter: Chapter) => {};
@@ -222,7 +229,20 @@ struct ChapterRow {
             .fontColor($r('app.color.primary_text'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-          if (this.chapter.size > 0) {
+          if (this.downloadState.status === ChapterDownloadStatus.Downloading) {
+            Text('下载 ' + this.downloadState.completed + '/' + this.downloadState.total + ' · ' +
+              this.downloadState.progressPercent() + '%')
+              .fontSize(11)
+              .fontColor($r('app.color.primary'))
+          } else if (this.downloadState.status === ChapterDownloadStatus.Completed) {
+            Text('已下载 · ' + (this.chapter.size > 0 ? this.chapter.size + ' 页' : '本地可用'))
+              .fontSize(11)
+              .fontColor($r('app.color.primary'))
+          } else if (this.downloadState.status === ChapterDownloadStatus.Failed) {
+            Text('下载失败，点下载按钮重试')
+              .fontSize(11)
+              .fontColor($r('app.color.accent'))
+          } else if (this.chapter.size > 0) {
             Text(this.chapter.size + ' 页')
               .fontSize(11)
               .fontColor($r('app.color.secondary_text'))
@@ -248,14 +268,34 @@ struct ChapterRow {
         .onClick(() => this.onComments(this.chapter))
 
         Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_down_circle'))
-            .fontSize(19)
-            .fontColor([$r('app.color.primary')])
+          if (this.downloadState.status === ChapterDownloadStatus.Downloading) {
+            Stack({ alignContent: Alignment.Center }) {
+              Progress({ value: this.downloadState.progressPercent(), total: 100, type: ProgressType.Ring })
+                .width(24)
+                .height(24)
+                .color($r('app.color.primary'))
+                .style({ strokeWidth: 2, enableSmoothEffect: true })
+              SymbolGlyph($r('sys.symbol.xmark'))
+                .fontSize(12)
+                .fontColor([$r('app.color.primary')])
+            }
+          } else if (this.downloadState.status === ChapterDownloadStatus.Completed) {
+            SymbolGlyph($r('sys.symbol.checkmark'))
+              .fontSize(18)
+              .fontColor([$r('app.color.primary')])
+          } else {
+            SymbolGlyph($r('sys.symbol.arrow_down_circle'))
+              .fontSize(19)
+              .fontColor([this.downloadState.status === ChapterDownloadStatus.Failed ?
+                $r('app.color.accent') : $r('app.color.primary')])
+          }
         }
         .width(36)
         .height(36)
-        .backgroundColor($r('app.color.accent_soft'))
-        .accessibilityText('下载本章')
+        .backgroundColor(this.downloadState.status === ChapterDownloadStatus.Completed ?
+          $r('app.color.nav_selected') : $r('app.color.accent_soft'))
+        .accessibilityText(this.downloadState.status === ChapterDownloadStatus.Downloading ? '取消下载' :
+          this.downloadState.status === ChapterDownloadStatus.Completed ? '已下载' : '下载本章')
         .onClick(() => this.onDownload(this.chapter))
       }
     }
@@ -331,6 +371,40 @@ export struct DetailPage {
       }
     }
     this.visibleChapters = ordered;
+  }
+
+  private downloadRequest(chapter: Chapter): ChapterDownloadRequest {
+    const comicName = this.detail !== null && this.detail.title.length > 0 ? this.detail.title : this.mangaId;
+    return {
+      comicName: comicName,
+      comicId: this.mangaId,
+      chapterName: chapter.name.length > 0 ? chapter.name : '章节_' + chapter.id.substring(0, 8),
+      chapterId: chapter.id
+    };
+  }
+
+  private async handleChapterDownload(chapter: Chapter): Promise<void> {
+    if (this.detail === null || this.detail.title.length === 0) {
+      this.showToast('漫画信息加载完成后才能下载');
+      return;
+    }
+    const request = this.downloadRequest(chapter);
+    const state = downloadStore.taskFor(request);
+    if (state.status === ChapterDownloadStatus.Downloading) {
+      downloadStore.cancel(request.comicId, request.chapterId);
+      this.showToast('已取消下载');
+      return;
+    }
+    if (state.status === ChapterDownloadStatus.Completed) {
+      this.showToast('该章节已下载');
+      return;
+    }
+    const result = await downloadStore.downloadChapter(request, (_progress): void => {});
+    if (result.status === ChapterDownloadStatus.Completed) {
+      this.showToast('章节下载完成');
+    } else if (result.status === ChapterDownloadStatus.Failed) {
+      this.showToast('下载失败：' + result.errorText);
+    }
   }
 
   private toggleChapterOrder(): void {
@@ -446,14 +520,15 @@ export struct DetailPage {
               ForEach(this.visibleChapters, (chapter: Chapter, index: number) => {
                 ChapterRow({
                   chapter: chapter,
+                  downloadState: downloadStore.taskFor(this.downloadRequest(chapter)),
                   onRead: (_chapter: Chapter): void => {
                     this.showToast('阅读器开发中');
                   },
                   onComments: (selected: Chapter): void => {
                     this.openChapterComments(selected);
                   },
-                  onDownload: (_chapter: Chapter): void => {
-                    this.showToast('下载功能开发中');
+                  onDownload: (selected: Chapter): void => {
+                    this.handleChapterDownload(selected);
                   }
                 })
               }, (chapter: Chapter, index: number) => chapter.id + ':' + index.toString())

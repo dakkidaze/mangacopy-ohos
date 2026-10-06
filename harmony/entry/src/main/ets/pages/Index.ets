@@ -9,6 +9,7 @@ import { AccountPage } from './AccountPage';
 import { DebugPage } from './DebugPage';
 import { DetailPage } from './DetailPage';
 import { DiscoverPage } from './DiscoverPage';
+import { DownloadChaptersPage, DownloadsPage } from './DownloadsPage';
 import { FavoritesPage, HistoryPage } from './LibraryPages';
 import { SearchPage } from './SearchPage';
 import { SettingsPage } from './SettingsPage';
@@ -23,7 +24,8 @@ export enum AppRoute {
   Web = 6,
   Debug = 7,
   Search = 8,
-  Detail = 9
+  Detail = 9,
+  DownloadChapters = 10
 }
 
 enum ShellTab {
@@ -39,6 +41,8 @@ struct Index {
   @Local navIndicatorVp: number = 8;
   @Local selectedMangaId: string = '';
   @Local detailReturnRoute: AppRoute = AppRoute.Shell;
+  @Local selectedDownloadDirectory: string = '';
+  @Local selectedDownloadName: string = '';
 
   aboutToAppear(): void {
     this.applyPersistedChrome();
@@ -47,6 +51,10 @@ struct Index {
   onBackPress(): boolean {
     if (this.route === AppRoute.Detail) {
       this.route = this.detailReturnRoute;
+      return true;
+    }
+    if (this.route === AppRoute.DownloadChapters) {
+      this.route = AppRoute.Downloads;
       return true;
     }
     if (this.route === AppRoute.Search) {
@@ -113,6 +121,12 @@ struct Index {
 
   private backFromDetail(): void {
     this.route = this.detailReturnRoute;
+  }
+
+  private openDownloadComic(directory: string, name: string): void {
+    this.selectedDownloadDirectory = directory;
+    this.selectedDownloadName = name;
+    this.route = AppRoute.DownloadChapters;
   }
 
   private closePage(): void {
@@ -193,6 +207,21 @@ struct Index {
         })
       }
 
+      if (this.route === AppRoute.Downloads) {
+        DownloadsPage({
+          onBack: (): void => this.closePage(),
+          onOpenComic: (directory: string, name: string): void => this.openDownloadComic(directory, name)
+        })
+      }
+
+      if (this.route === AppRoute.DownloadChapters) {
+        DownloadChaptersPage({
+          comicDirectory: this.selectedDownloadDirectory,
+          comicName: this.selectedDownloadName,
+          onBack: (): void => this.openRoute(AppRoute.Downloads)
+        })
+      }
+
       if (this.route === AppRoute.Settings) {
         SettingsPage({
           onBack: (): void => this.closePage(),
@@ -206,7 +235,7 @@ struct Index {
         })
       }
 
-      if (this.route === AppRoute.Downloads || this.route === AppRoute.Web) {
+      if (this.route === AppRoute.Web) {
         ConstructionPage({
           route: this.route,
           onBack: (): void => this.closePage()
@@ -434,20 +463,14 @@ struct BottomTabItem {
 
 @ComponentV2
 struct ConstructionPage {
-  @Param route: AppRoute = AppRoute.Downloads;
+  @Param route: AppRoute = AppRoute.Web;
   @Event onBack: () => void = () => {};
 
   private title(): string {
-    if (this.route === AppRoute.Downloads) {
-      return '我的下载';
-    }
     return '网页版';
   }
 
   private nextPhase(): string {
-    if (this.route === AppRoute.Downloads) {
-      return '下载管理将在后续阶段接入';
-    }
     if (this.route === AppRoute.Web) {
       return '网页浏览能力尚未接入，这里不会打开阅读器';
     }
