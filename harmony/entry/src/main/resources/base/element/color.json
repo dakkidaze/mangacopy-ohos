@@ -41,6 +41,14 @@
       "value": "#180B171C"
     },
     {
+      "name": "panel_shadow",
+      "value": "#52070C0F"
+    },
+    {
+      "name": "scrim",
+      "value": "#660B1114"
+    },
+    {
       "name": "primary",
       "value": "#214F5E"
     },

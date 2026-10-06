@@ -323,6 +323,9 @@ export struct BrowseStatePanel {
   @Param state: BrowseLoadState = BrowseLoadState.Idle;
   @Param errorText: string = '';
   @Param idleText: string = '准备加载';
+  @Param loadingText: string = '正在加载…';
+  @Param emptyTitle: string = '没有找到漫画';
+  @Param emptyDescription: string = '可以换个关键词或筛选条件再试';
   @Event onRetry: () => void = () => {};
 
   build() {
@@ -332,7 +335,7 @@ export struct BrowseStatePanel {
           .width(36)
           .height(36)
           .color($r('app.color.primary'))
-        Text('正在加载…')
+        Text(this.loadingText)
           .fontSize(14)
           .fontColor($r('app.color.secondary_text'))
       } else if (this.state === BrowseLoadState.Error) {
@@ -360,11 +363,11 @@ export struct BrowseStatePanel {
         Text('○')
           .fontSize(32)
           .fontColor($r('app.color.secondary_text'))
-        Text('没有找到漫画')
+        Text(this.emptyTitle)
           .fontSize(17)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.primary_text'))
-        Text('可以换个关键词或筛选条件再试')
+        Text(this.emptyDescription)
           .fontSize(13)
           .fontColor($r('app.color.secondary_text'))
       } else {

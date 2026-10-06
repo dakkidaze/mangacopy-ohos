@@ -1,6 +1,7 @@
 /** 原生漫画详情页：详情与章节分别加载，阅读和下载暂以明确提示承接。 */
 import { Chapter, MangaDetail } from '../model/Models';
 import { BrowseLoadState, describeBrowseError, getBrowseSource } from './BrowseSupport';
+import { CommentPanel, CommentPanelTab } from './CommentPanel';
 
 function emptyDetail(): MangaDetail {
   return new MangaDetail('', '', '', '', '', '', '', '', []);
@@ -80,6 +81,7 @@ struct DetailOverview {
   @Param detail: MangaDetail = emptyDetail();
   @Param expanded: boolean = false;
   @Event onToggleDescription: () => void = () => {};
+  @Event onOpenComments: () => void = () => {};
 
   build() {
     Column({ space: 16 }) {
@@ -136,6 +138,23 @@ struct DetailOverview {
         .width('100%')
       }
 
+      Button({ type: ButtonType.Normal, stateEffect: true }) {
+        Row({ space: 7 }) {
+          SymbolGlyph($r('sys.symbol.message'))
+            .fontSize(18)
+            .fontColor([$r('app.color.primary')])
+          Text('查看吐槽')
+            .fontSize(13)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.primary'))
+        }
+      }
+      .height(40)
+      .padding({ left: 15, right: 15 })
+      .backgroundColor($r('app.color.accent_soft'))
+      .borderRadius(14)
+      .onClick(() => this.onOpenComments())
+
       Column({ space: 6 }) {
         Text('简介')
           .fontSize(14)
@@ -174,6 +193,7 @@ struct DetailOverview {
 struct ChapterRow {
   @Param chapter: Chapter = new Chapter('', '', 0, 0);
   @Event onRead: (chapter: Chapter) => void = (_chapter: Chapter) => {};
+  @Event onComments: (chapter: Chapter) => void = (_chapter: Chapter) => {};
   @Event onDownload: (chapter: Chapter) => void = (_chapter: Chapter) => {};
 
   private chapterTitle(): string {
@@ -215,15 +235,29 @@ struct ChapterRow {
       .height(54)
       .onClick(() => this.onRead(this.chapter))
 
-      Button({ type: ButtonType.Circle, stateEffect: true }) {
-        SymbolGlyph($r('sys.symbol.arrow_down_circle'))
-          .fontSize(21)
-          .fontColor([$r('app.color.primary')])
+      Row({ space: 6 }) {
+        Button({ type: ButtonType.Circle, stateEffect: true }) {
+          SymbolGlyph($r('sys.symbol.message'))
+            .fontSize(19)
+            .fontColor([$r('app.color.primary')])
+        }
+        .width(36)
+        .height(36)
+        .backgroundColor($r('app.color.surface_variant'))
+        .accessibilityText('查看本章吐槽')
+        .onClick(() => this.onComments(this.chapter))
+
+        Button({ type: ButtonType.Circle, stateEffect: true }) {
+          SymbolGlyph($r('sys.symbol.arrow_down_circle'))
+            .fontSize(19)
+            .fontColor([$r('app.color.primary')])
+        }
+        .width(36)
+        .height(36)
+        .backgroundColor($r('app.color.accent_soft'))
+        .accessibilityText('下载本章')
+        .onClick(() => this.onDownload(this.chapter))
       }
-      .width(38)
-      .height(38)
-      .backgroundColor($r('app.color.accent_soft'))
-      .onClick(() => this.onDownload(this.chapter))
     }
     .width('100%')
     .padding({ left: 12, right: 10, top: 5, bottom: 5 })
@@ -246,6 +280,10 @@ export struct DetailPage {
   @Local chapterError: string = '';
   @Local descriptionExpanded: boolean = false;
   @Local ascending: boolean = true;
+  @Local commentPanelVisible: boolean = false;
+  @Local commentChapterId: string = '';
+  @Local commentComicId: string = '';
+  @Local commentInitialTab: CommentPanelTab = CommentPanelTab.Chapter;
 
   aboutToAppear(): void {
     this.loadDetail();
@@ -300,6 +338,24 @@ export struct DetailPage {
     this.syncChapterOrder();
   }
 
+  private openComicComments(): void {
+    if (this.detail === null || this.detail.uuid.length === 0) {
+      this.showToast('暂无可用的漫画标识');
+      return;
+    }
+    this.commentChapterId = '';
+    this.commentComicId = this.detail.uuid;
+    this.commentInitialTab = CommentPanelTab.Comic;
+    this.commentPanelVisible = true;
+  }
+
+  private openChapterComments(chapter: Chapter): void {
+    this.commentChapterId = chapter.id;
+    this.commentComicId = this.detail === null ? '' : this.detail.uuid;
+    this.commentInitialTab = CommentPanelTab.Chapter;
+    this.commentPanelVisible = true;
+  }
+
   private showToast(message: string): void {
     try {
       this.getUIContext().getPromptAction().showToast({ message: message });
@@ -308,7 +364,8 @@ export struct DetailPage {
   }
 
   build() {
-    Column() {
+    Stack({ alignContent: Alignment.Bottom }) {
+      Column() {
       Row({ space: 10 }) {
         Button({ type: ButtonType.Circle, stateEffect: true }) {
           SymbolGlyph($r('sys.symbol.chevron_left'))
@@ -344,7 +401,8 @@ export struct DetailPage {
               expanded: this.descriptionExpanded,
               onToggleDescription: (): void => {
                 this.descriptionExpanded = !this.descriptionExpanded;
-              }
+              },
+              onOpenComments: (): void => this.openComicComments()
             })
           } else {
             DetailStatePanel({
@@ -391,6 +449,9 @@ export struct DetailPage {
                   onRead: (_chapter: Chapter): void => {
                     this.showToast('阅读器开发中');
                   },
+                  onComments: (selected: Chapter): void => {
+                    this.openChapterComments(selected);
+                  },
                   onDownload: (_chapter: Chapter): void => {
                     this.showToast('下载功能开发中');
                   }
@@ -414,6 +475,22 @@ export struct DetailPage {
       }
       .layoutWeight(1)
       .scrollBar(BarState.Auto)
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.page_background'))
+
+      if (this.commentPanelVisible) {
+        CommentPanel({
+          visible: this.commentPanelVisible,
+          chapterId: this.commentChapterId,
+          comicId: this.commentComicId,
+          initialTab: this.commentInitialTab,
+          onClose: (): void => {
+            this.commentPanelVisible = false;
+          }
+        })
+      }
     }
     .width('100%')
     .height('100%')
