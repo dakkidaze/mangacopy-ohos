@@ -1,0 +1,9 @@
+{
+  "name": "mangacopy-ohos-arkts",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Build tooling for the Copymanga HarmonyOS ArkTS project.",
+  "main": "",
+  "author": "dakkidaze",
+  "license": "Apache-2.0"
+}

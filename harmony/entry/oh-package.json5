@@ -1,0 +1,10 @@
+{
+  "name": "entry",
+  "version": "0.1.0",
+  "description": "MangaCopyOHOS ArkTS entry module.",
+  "main": "",
+  "author": "dakkidaze",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "devDependencies": {}
+}

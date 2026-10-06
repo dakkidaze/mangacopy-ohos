@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "MangaCopyOHOS ArkTS entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "MangaCopyOHOS"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "MangaCopyOHOS"
+    }
+  ]
+}

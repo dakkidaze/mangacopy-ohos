@@ -1,0 +1,2 @@
+# Release obfuscation is disabled in entry/build-profile.json5; keep rules minimal.
+-enable-property-obfuscation

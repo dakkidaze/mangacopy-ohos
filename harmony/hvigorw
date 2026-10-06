@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Thin wrapper: delegate to the hvigor bootstrap shipped with the local
+# command-line-tools installation. (The 6.x hvigorw.js must sit beside the
+# @ohos/hvigor package dirs, which is only true inside the CLI tools tree,
+# so a project-local copy of it cannot bootstrap.)
+#
+# Override location with: HVIGOR_CLI=/path/to/hvigorw ./hvigorw ...
+HVIGOR_CLI="${HVIGOR_CLI:-/home/dakki/command-line-tools/command-line-tools/hvigor/bin/hvigorw}"
+
+if [ ! -x "$HVIGOR_CLI" ]; then
+  echo "ERROR: hvigor bootstrap not found at: $HVIGOR_CLI" >&2
+  echo "Install DevEco command-line-tools or set HVIGOR_CLI." >&2
+  exit 1
+fi
+
+exec "$HVIGOR_CLI" "$@"

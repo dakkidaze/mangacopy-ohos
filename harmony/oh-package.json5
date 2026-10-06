@@ -1,0 +1,11 @@
+{
+  "modelVersion": "26.0.0",
+  "name": "mangacopy-ohos-arkts",
+  "version": "0.1.0",
+  "description": "Copymanga HarmonyOS pure-ArkTS port (Dart reference: repo root Flutter sources).",
+  "main": "",
+  "author": "dakkidaze",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "devDependencies": {}
+}

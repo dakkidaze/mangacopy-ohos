@@ -1,0 +1,40 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#101820"
+    },
+    {
+      "name": "page_background",
+      "value": "#101820"
+    },
+    {
+      "name": "surface",
+      "value": "#18232D"
+    },
+    {
+      "name": "surface_variant",
+      "value": "#22303B"
+    },
+    {
+      "name": "primary",
+      "value": "#24586F"
+    },
+    {
+      "name": "on_primary",
+      "value": "#F2F5F7"
+    },
+    {
+      "name": "primary_text",
+      "value": "#F2F5F7"
+    },
+    {
+      "name": "secondary_text",
+      "value": "#B8C4CC"
+    },
+    {
+      "name": "divider",
+      "value": "#2B3A45"
+    }
+  ]
+}

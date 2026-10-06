@@ -1,0 +1,14 @@
+/.hvigor/
+/.idea/
+/build/
+/entry/build/
+/oh_modules/
+/entry/oh_modules/
+/local.properties
+*.hap
+*.app
+*.iml
+Crash_*.dmp
+/.clang-format
+/.clang-tidy
+/entry/.cxx/
