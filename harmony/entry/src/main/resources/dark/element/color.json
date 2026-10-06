@@ -37,6 +37,10 @@
       "value": "#99000000"
     },
     {
+      "name": "card_shadow",
+      "value": "#66000000"
+    },
+    {
       "name": "primary",
       "value": "#78B6C3"
     },

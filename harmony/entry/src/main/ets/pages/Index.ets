@@ -6,6 +6,9 @@ import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { KEY_DARK_MODE, KEY_HIDE_STATUS_BAR, settingsStore } from '../services/SettingsStore';
 import { DebugPage } from './DebugPage';
+import { DetailPage } from './DetailPage';
+import { DiscoverPage } from './DiscoverPage';
+import { SearchPage } from './SearchPage';
 import { SettingsPage } from './SettingsPage';
 
 export enum AppRoute {
@@ -32,12 +35,23 @@ struct Index {
   @Local route: AppRoute = AppRoute.Shell;
   @Local tab: ShellTab = ShellTab.Discover;
   @Local navIndicatorVp: number = 8;
+  @Local selectedMangaId: string = '';
+  @Local detailReturnRoute: AppRoute = AppRoute.Shell;
 
   aboutToAppear(): void {
     this.applyPersistedChrome();
   }
 
   onBackPress(): boolean {
+    if (this.route === AppRoute.Detail) {
+      this.route = this.detailReturnRoute;
+      return true;
+    }
+    if (this.route === AppRoute.Search) {
+      this.route = AppRoute.Shell;
+      this.tab = ShellTab.Discover;
+      return true;
+    }
     if (this.route !== AppRoute.Shell) {
       this.route = AppRoute.Shell;
       this.tab = ShellTab.More;
@@ -81,6 +95,24 @@ struct Index {
     this.route = route;
   }
 
+  private openDetail(id: string, returnRoute: AppRoute): void {
+    if (id.length === 0) {
+      return;
+    }
+    this.selectedMangaId = id;
+    this.detailReturnRoute = returnRoute;
+    this.route = AppRoute.Detail;
+  }
+
+  private backFromSearch(): void {
+    this.route = AppRoute.Shell;
+    this.tab = ShellTab.Discover;
+  }
+
+  private backFromDetail(): void {
+    this.route = this.detailReturnRoute;
+  }
+
   private closePage(): void {
     this.route = AppRoute.Shell;
     this.tab = ShellTab.More;
@@ -97,9 +129,10 @@ struct Index {
       if (this.route === AppRoute.Shell) {
         Stack({ alignContent: Alignment.Bottom }) {
           if (this.tab === ShellTab.Discover) {
-            DiscoverPlaceholder({
+            DiscoverPage({
               bottomInset: 48,
-              onSearch: (): void => this.openRoute(AppRoute.Search)
+              onSearch: (): void => this.openRoute(AppRoute.Search),
+              onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Shell)
             })
           } else {
             MorePage({
@@ -120,6 +153,20 @@ struct Index {
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
 
+      if (this.route === AppRoute.Search) {
+        SearchPage({
+          onBack: (): void => this.backFromSearch(),
+          onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Search)
+        })
+      }
+
+      if (this.route === AppRoute.Detail) {
+        DetailPage({
+          mangaId: this.selectedMangaId,
+          onBack: (): void => this.backFromDetail()
+        })
+      }
+
       if (this.route === AppRoute.Settings) {
         SettingsPage({
           onBack: (): void => this.closePage(),
@@ -134,8 +181,7 @@ struct Index {
       }
 
       if (this.route === AppRoute.Account || this.route === AppRoute.Favorites ||
-        this.route === AppRoute.History || this.route === AppRoute.Downloads ||
-        this.route === AppRoute.Web || this.route === AppRoute.Search || this.route === AppRoute.Detail) {
+        this.route === AppRoute.History || this.route === AppRoute.Downloads || this.route === AppRoute.Web) {
         ConstructionPage({
           route: this.route,
           onBack: (): void => this.closePage()
@@ -145,168 +191,6 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.page_background'))
-  }
-}
-
-@ComponentV2
-struct DiscoverPlaceholder {
-  @Param bottomInset: number = 78;
-  @Event onSearch: () => void = () => {};
-
-  build() {
-    Column() {
-      Row() {
-        Column({ space: 3 }) {
-          Text('MANGACOPY')
-            .fontSize(11)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.accent'))
-            .letterSpacing(2.2)
-          Text('发现')
-            .fontSize(30)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.primary_text'))
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        Button('⌕')
-          .type(ButtonType.Circle)
-          .width(44)
-          .height(44)
-          .fontSize(24)
-          .fontColor($r('app.color.primary_text'))
-          .backgroundColor($r('app.color.surface'))
-          .onClick(() => this.onSearch())
-      }
-      .width('100%')
-      .padding({ left: 20, right: 20, top: 22, bottom: 14 })
-
-      Scroll() {
-        Column({ space: 18 }) {
-          Stack({ alignContent: Alignment.BottomStart }) {
-            Column() {
-              Row() {
-                Blank()
-                Text('漫')
-                  .fontSize(80)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.hero_mark'))
-                  .opacity(0.34)
-                  .margin({ right: 8, top: -10 })
-              }
-              .width('100%')
-              .layoutWeight(1)
-            }
-            .width('100%')
-            .height('100%')
-
-            Column({ space: 8 }) {
-              Text('原生发现页')
-                .fontSize(24)
-                .fontWeight(FontWeight.Bold)
-                .fontColor($r('app.color.on_primary'))
-              Text('热门、最新与搜索将在下一阶段接入。')
-                .fontSize(14)
-                .lineHeight(21)
-                .fontColor($r('app.color.hero_secondary'))
-              Row({ space: 6 }) {
-                Text('P3')
-                  .fontSize(11)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.primary'))
-                  .padding({ left: 9, right: 9, top: 4, bottom: 4 })
-                  .backgroundColor($r('app.color.on_primary'))
-                  .borderRadius(9)
-                Text('页面挂载点已准备')
-                  .fontSize(12)
-                  .fontColor($r('app.color.hero_secondary'))
-              }
-            }
-            .alignItems(HorizontalAlign.Start)
-            .padding({ left: 20, right: 20, bottom: 20 })
-          }
-          .width('100%')
-          .height(208)
-          .backgroundColor($r('app.color.primary'))
-          .borderRadius(28)
-
-          Column({ space: 10 }) {
-            Row() {
-              Text('即将提供')
-                .fontSize(17)
-                .fontWeight(FontWeight.Bold)
-                .fontColor($r('app.color.primary_text'))
-              Blank()
-              Text('原生浏览')
-                .fontSize(11)
-                .fontColor($r('app.color.accent'))
-            }
-            .width('100%')
-            Row({ space: 10 }) {
-              this.previewTile('热', '热门漫画', '按热度浏览')
-              this.previewTile('新', '最近更新', '追更更直接')
-            }
-            .width('100%')
-          }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
-          .padding(16)
-          .backgroundColor($r('app.color.surface'))
-          .borderRadius(22)
-
-          Column({ space: 7 }) {
-            Text('现在可以做什么')
-              .fontSize(15)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.primary_text'))
-            Text('前往「更多」查看账号、收藏、历史、下载入口，或先调整阅读、图源与源站设置。')
-              .fontSize(13)
-              .lineHeight(20)
-              .fontColor($r('app.color.secondary_text'))
-          }
-          .alignItems(HorizontalAlign.Start)
-          .width('100%')
-          .padding(17)
-          .backgroundColor($r('app.color.surface_variant'))
-          .borderRadius(20)
-        }
-        .width('100%')
-        .padding({ left: 16, right: 16, bottom: this.bottomInset })
-      }
-      .layoutWeight(1)
-      .scrollBar(BarState.Off)
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.page_background'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-  }
-
-  @Builder
-  previewTile(mark: string, title: string, subtitle: string) {
-    Column({ space: 7 }) {
-      Text(mark)
-        .fontSize(15)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.accent'))
-        .width(34)
-        .height(34)
-        .textAlign(TextAlign.Center)
-        .backgroundColor($r('app.color.accent_soft'))
-        .borderRadius(11)
-      Text(title)
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.primary_text'))
-      Text(subtitle)
-        .fontSize(11)
-        .fontColor($r('app.color.secondary_text'))
-    }
-    .alignItems(HorizontalAlign.Start)
-    .layoutWeight(1)
-    .padding(13)
-    .backgroundColor($r('app.color.surface_variant'))
-    .borderRadius(16)
   }
 }
 
