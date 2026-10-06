@@ -6,15 +6,17 @@
 ## 工程约定（后续所有代码必须遵循）
 
 ### 状态管理
-- 组件内状态：V1 装饰器（`@State`、`@Prop`、`@Link`、`@Provide`/`@Consume`）。
-- 全局状态：`AppStorage` + `@StorageProp` / `@StorageLink`；跨页面共享的上下文（如 `abilityContext`）在 `EntryAbility.onCreate` 里 `AppStorage.setOrCreate`。
-- 深层列表项（如漫画卡片列表）：数据类用 `@Observed`，子组件用 `@ObjectLink`，保证数组内对象变更可刷新。
+- 所有 ArkUI 组件统一使用状态管理 V2：`@ComponentV2`、`@Local`、`@Param`、`@Event`、`@Once`。
+- 需要观察对象内部变化时，数据类使用 `@ObservedV2`，可变字段使用 `@Trace`；派生联动使用 `@Monitor`。
+- 禁止在同一个组件内混用 V1（`@Component` / `@State` / `@Prop` / `@Link` 等）与 V2 装饰器。
+- 全局仅通过 `AppStorage` 传递 `abilityContext`；业务状态与设置不放入 `AppStorage`。`EntryAbility.onCreate` 负责 `AppStorage.setOrCreate('abilityContext', this.context)`。
 - 不引入第三方状态库。
 
 ### 路由
 - **单一 `@Entry` 页面 + 内部路由枚举 + `Stack` 条件渲染**（照搬 Ehviewer_OHOS 的 `Index.ets` 模式）。
-- **不引入 Navigation / router**；`main_pages.json` 只注册 `pages/Index`。
-- 场景枚举放在 `ets/model/`，每个场景一个组件放在 `ets/components/`，由 `Index.ets` 里的 `Stack` 按枚举条件挂载。
+- **不引入 `Navigation` / `router`**；`main_pages.json` 只注册 `pages/Index`。
+- 根页面负责页面枚举、返回行为和挂载；各场景保持独立 V2 组件，通过 `@Param` 接收值、通过 `@Event` 回传操作。
+- 新页面接入时扩展内部枚举和 `Stack` 分支，不另建 `@Entry` 页面。
 
 ### 网络
 - 只用 `@kit.NetworkKit` 的 `http`。
@@ -29,8 +31,9 @@
 - 需要内嵌网页（如登录验证）时用 `@kit.ArkWeb` 的 `Web` 组件 + `javaScriptProxy`。
 
 ### 配色
-- 全部颜色资源放 `entry/src/main/resources/base/element/color.json`，深色模式用 `dark/element/color.json` **同名覆盖**。
+- 全部颜色资源放 `entry/src/main/resources/base/element/color.json`，深色模式用 `dark/element/color.json` **同名覆盖**；新增颜色必须同时补齐两套资源。
 - 代码中一律 `$r('app.color.xxx')`，禁止硬编码色值。
+- `darkMode=true` 时固定深色资源；关闭时将颜色模式还给系统，跟随系统明暗。页面不要自行维护另一套色值。
 
 ### 图标
 - 只使用本工程自带的原创占位 PNG（`base/media/`），**禁止**复用 copymanga 上游图标资源。

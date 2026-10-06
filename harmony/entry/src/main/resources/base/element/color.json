@@ -2,39 +2,63 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#F3F5F7"
+      "value": "#F4F2ED"
     },
     {
       "name": "page_background",
-      "value": "#F3F5F7"
+      "value": "#F4F2ED"
     },
     {
       "name": "surface",
-      "value": "#FFFFFF"
+      "value": "#FFFEFB"
     },
     {
       "name": "surface_variant",
-      "value": "#F0F4F7"
+      "value": "#E9EEF0"
+    },
+    {
+      "name": "field_background",
+      "value": "#EFF3F4"
+    },
+    {
+      "name": "nav_surface",
+      "value": "#FCFBF7"
     },
     {
       "name": "primary",
-      "value": "#2F6F8F"
+      "value": "#214F5E"
     },
     {
       "name": "on_primary",
       "value": "#FFFFFF"
     },
     {
+      "name": "accent",
+      "value": "#BC6043"
+    },
+    {
+      "name": "accent_soft",
+      "value": "#F3E3DC"
+    },
+    {
+      "name": "hero_mark",
+      "value": "#9CC5CC"
+    },
+    {
+      "name": "hero_secondary",
+      "value": "#D6E7E9"
+    },
+    {
       "name": "primary_text",
-      "value": "#17202A"
+      "value": "#172329"
     },
     {
       "name": "secondary_text",
-      "value": "#667085"
+      "value": "#647078"
     },
     {
       "name": "divider",
-      "value": "#E8EDF2"
+      "value": "#DEE4E5"
     }
   ]
 }

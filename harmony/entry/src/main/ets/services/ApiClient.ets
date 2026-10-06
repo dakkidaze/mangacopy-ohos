@@ -100,6 +100,7 @@ export class ApiClient {
     if (cookieHeader.length === 0) {
       return;
     }
+    const before = this.cookies.size;
     // HttpResponse.cookies 为原始串；多段 cookie 以（可能的）换行/逗号分隔。
     const lines = cookieHeader.split(/\r?\n|,(?=[^;]+?=)/);
     for (let i = 0; i < lines.length; i++) {
@@ -113,6 +114,9 @@ export class ApiClient {
         this.cookies.set(first.substring(0, eq).trim(), first.substring(eq + 1).trim());
       }
     }
+    // 诊断：只记长度与条数，绝不记 cookie 值。
+    hilog.info(DOMAIN, TAG, 'set-cookie 原始=%{public}d 字节，jar %{public}d → %{public}d 条',
+      cookieHeader.length, before, this.cookies.size);
   }
 
   /** 评论请求需路由到支持评论的域（spec A.1）。 */
