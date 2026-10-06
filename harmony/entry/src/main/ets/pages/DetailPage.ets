@@ -213,18 +213,6 @@ struct ChapterRow {
   build() {
     Row({ space: 10 }) {
       Row({ space: 10 }) {
-        Column() {
-          Text('•')
-            .fontSize(16)
-            .fontColor($r('app.color.primary'))
-            .textAlign(TextAlign.Center)
-        }
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-        .width(34)
-        .height(34)
-        .backgroundColor($r('app.color.surface_variant'))
-        .borderRadius(11)
         Column({ space: 3 }) {
           Text(this.chapterTitle())
             .fontSize(14)
@@ -313,6 +301,8 @@ struct ChapterRow {
 export struct DetailPage {
   @Param mangaId: string = '';
   @Event onBack: () => void = () => {};
+  @Event onOpenReader: (chapterId: string, chapterName: string) => void =
+    (_chapterId: string, _chapterName: string) => {};
 
   @Local detailState: BrowseLoadState = BrowseLoadState.Loading;
   @Local chapterState: BrowseLoadState = BrowseLoadState.Loading;
@@ -426,6 +416,15 @@ export struct DetailPage {
     this.commentPanelVisible = true;
   }
 
+  private openChapterReader(chapter: Chapter): void {
+    if (this.mangaId.length === 0 || chapter.id.length === 0) {
+      this.showToast('章节信息不完整');
+      return;
+    }
+    const chapterName = chapter.name.length > 0 ? chapter.name : '第 ' + chapter.index + ' 话';
+    this.onOpenReader(chapter.id, chapterName);
+  }
+
   private openChapterComments(chapter: Chapter): void {
     this.commentChapterId = chapter.id;
     this.commentComicId = this.detail === null ? '' : this.detail.uuid;
@@ -524,8 +523,8 @@ export struct DetailPage {
                 ChapterRow({
                   chapter: chapter,
                   downloadState: downloadStore.taskFor(this.downloadRequest(chapter)),
-                  onRead: (_chapter: Chapter): void => {
-                    this.showToast('阅读器开发中');
+                  onRead: (selected: Chapter): void => {
+                    this.openChapterReader(selected);
                   },
                   onComments: (selected: Chapter): void => {
                     this.openChapterComments(selected);

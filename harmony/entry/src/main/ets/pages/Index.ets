@@ -13,6 +13,7 @@ import { DiscoverPage } from './DiscoverPage';
 import { DownloadChaptersPage, DownloadsPage } from './DownloadsPage';
 import { HiddenCollectorHost } from './HiddenCollectorHost';
 import { FavoritesPage, HistoryPage } from './LibraryPages';
+import { ReaderPage } from './ReaderPage';
 import { SearchPage } from './SearchPage';
 import { SettingsPage } from './SettingsPage';
 import { WebPage } from './WebPage';
@@ -29,7 +30,8 @@ export enum AppRoute {
   Debug = 7,
   Search = 8,
   Detail = 9,
-  DownloadChapters = 10
+  DownloadChapters = 10,
+  Reader = 11
 }
 
 enum ShellTab {
@@ -48,6 +50,8 @@ struct Index {
   @Local selectedDownloadDirectory: string = '';
   @Local selectedDownloadName: string = '';
   @Local webAsRoot: boolean = false;
+  @Local readerChapterId: string = '';
+  @Local readerChapterName: string = '';
   private webController: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear(): void {
@@ -55,6 +59,10 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.route === AppRoute.Reader) {
+      this.route = AppRoute.Detail;
+      return true;
+    }
     if (this.route === AppRoute.Detail) {
       this.route = this.detailReturnRoute;
       return true;
@@ -152,6 +160,19 @@ struct Index {
     }
     this.selectedMangaId = id;
     this.detailReturnRoute = returnRoute;
+    this.route = AppRoute.Detail;
+  }
+
+  private openReader(chapterId: string, chapterName: string): void {
+    if (chapterId.length === 0) {
+      return;
+    }
+    this.readerChapterId = chapterId;
+    this.readerChapterName = chapterName;
+    this.route = AppRoute.Reader;
+  }
+
+  private backFromReader(): void {
     this.route = AppRoute.Detail;
   }
 
@@ -267,7 +288,19 @@ struct Index {
       if (this.route === AppRoute.Detail) {
         DetailPage({
           mangaId: this.selectedMangaId,
-          onBack: (): void => this.backFromDetail()
+          onBack: (): void => this.backFromDetail(),
+          onOpenReader: (chapterId: string, chapterName: string): void => {
+            this.openReader(chapterId, chapterName);
+          }
+        })
+      }
+
+      if (this.route === AppRoute.Reader) {
+        ReaderPage({
+          comicId: this.selectedMangaId,
+          chapterId: this.readerChapterId,
+          chapterName: this.readerChapterName,
+          onExit: (): void => this.backFromReader()
         })
       }
 
