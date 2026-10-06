@@ -18,9 +18,9 @@ export const kDesktopUserAgent: string =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 /** 默认请求头（网页身份：移动 UA + 浏览器式 XHR 头）。 */
-export function apiHeaders(webp: string = '0'): Record<string, Object> {
+export function apiHeaders(webp: string = '0', userAgent: string = ''): Record<string, Object> {
   const h: Record<string, Object> = {};
-  h['User-Agent'] = kMobileUserAgent;
+  h['User-Agent'] = userAgent.length > 0 ? userAgent : kMobileUserAgent;
   h['Accept'] = 'application/json, text/plain, */*';
   h['Accept-Language'] = 'zh-CN,zh;q=0.9';
   h['Version'] = kApiVersion;

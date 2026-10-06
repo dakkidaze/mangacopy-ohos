@@ -6,7 +6,7 @@ import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ApiDomainManager } from './ApiDomainManager';
-import { apiHeaders, isHotDomain } from './ApiHeaders';
+import { apiHeaders, isHotDomain, kDesktopUserAgent } from './ApiHeaders';
 import { ApiThrottle } from './ApiThrottle';
 import { authStore } from './AuthStore';
 
@@ -79,9 +79,14 @@ export class ApiClient {
     return out;
   }
 
-  /** 依据当前域是否为热辣域决定 `Webp` 头，并附 Token/Cookie。 */
-  private buildHeaders(): Record<string, Object> {
-    const h = apiHeaders(isHotDomain(this.domains.active) ? '1' : '0');
+  /**
+   * 依据当前域是否为热辣域决定 `Webp` 头，并附 Token/Cookie。
+   * `desktopUa=true` 时使用桌面 UA —— 章节图片接口服务端按 UA 限流：
+   * 移动 UA 只返回前 5 页，桌面 UA 返回完整章节（实测 5 vs 33）。
+   */
+  private buildHeaders(desktopUa: boolean = false): Record<string, Object> {
+    const h = apiHeaders(isHotDomain(this.domains.active) ? '1' : '0',
+      desktopUa ? kDesktopUserAgent : '');
     if (this.token.length > 0) {
       h['Authorization'] = 'Token ' + this.token;
     }
@@ -142,7 +147,13 @@ export class ApiClient {
     let lastErr = '';
     for (let i = 0; i <= retries; i++) {
       try {
-        const res = await this.throttle.run<http.HttpResponse>(() => this.doGet(base, path, query, timeoutMs));
+        // 章节图片接口用桌面 UA（服务端按 UA 限流：移动 UA 仅前 5 页）
+        const desktopUa = path.indexOf('/chapter2/') >= 0 || path.indexOf('/chapter/') >= 0;
+        if (desktopUa) {
+          hilog.info(DOMAIN, TAG, 'GET %{public}s 使用桌面 UA（完整章节）', path);
+        }
+        const res = await this.throttle.run<http.HttpResponse>(
+          () => this.doGet(base, path, query, timeoutMs, desktopUa));
         return this.parse(res);
       } catch (error) {
         if (error instanceof ApiException) {
@@ -196,12 +207,12 @@ export class ApiClient {
   }
 
   private async doGet(base: string, path: string, query: Record<string, string>,
-    timeoutMs: number): Promise<http.HttpResponse> {
+    timeoutMs: number, desktopUa: boolean = false): Promise<http.HttpResponse> {
     const request = http.createHttp();
     try {
       const res = await request.request(this.buildUrl(base, path, query), {
         method: http.RequestMethod.GET,
-        header: this.buildHeaders(),
+        header: this.buildHeaders(desktopUa),
         expectDataType: http.HttpDataType.STRING,
         usingCache: false,
         connectTimeout: timeoutMs,
