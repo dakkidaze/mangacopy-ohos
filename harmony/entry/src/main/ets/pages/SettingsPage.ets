@@ -248,7 +248,7 @@ export struct SettingsPage {
   @Local showPageNum: boolean = true;
   @Local volTurn: boolean = false;
   @Local sourceProfile: string = 'fast';
-  @Local browseSource: string = 'webview';
+  @Local browseSource: string = 'api';
   @Local chapterSource: string = 'api';
   @Local chapterEndComments: boolean = true;
   @Local imageCacheLimitMb: number = 1024;
@@ -278,7 +278,7 @@ export struct SettingsPage {
       this.sourceProfile = this.validSourceProfile(
         await settingsStore.getString(KEY_SOURCE_PROFILE, 'fast'));
       this.browseSource = this.validBinarySource(
-        await settingsStore.getString(KEY_BROWSE_SOURCE, 'webview'));
+        await settingsStore.getString(KEY_BROWSE_SOURCE, 'api'));
       this.chapterSource = this.validBinarySource(
         await settingsStore.getString(KEY_CHAPTER_SOURCE, 'api'));
       this.chapterEndComments = await settingsStore.getBool(KEY_CHAPTER_END_COMMENTS, true);
@@ -303,7 +303,7 @@ export struct SettingsPage {
   }
 
   private validBinarySource(value: string): string {
-    return ['webview', 'api'].indexOf(value) >= 0 ? value : 'webview';
+    return ['webview', 'api'].indexOf(value) >= 0 ? value : 'api';
   }
 
   private showToast(message: string): void {

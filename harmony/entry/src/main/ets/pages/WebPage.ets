@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
 import { kMobileUserAgent } from '../services/ApiHeaders';
+import { settingsStore } from '../services/SettingsStore';
 import { UrlManager } from '../services/UrlManager';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
@@ -17,21 +18,26 @@ const GM_METHODS: string[] = [
   'setLoadingDialog',
   'setLoadingDialogProgress',
   'toggleStatusBar',
+  'onChapterBlocked',
   'onReaderDetected'
 ];
 
 class VisibleWebBridge {
   onReaderBlocked: (value: string) => void = (_value: string) => {};
+  onHideFab: () => void = () => {};
   onOpenSettings: () => void = () => {};
   onEnterProfile: () => void = () => {};
   onTitle: (value: string) => void = (_value: string) => {};
   onReaderDetectedCallback: () => void = () => {};
 
   loadComic(url: string): void {
-    this.onReaderBlocked(url);
+    if (url.indexOf('/comicContent/') >= 0) {
+      this.onReaderBlocked(url);
+    }
   }
 
   hideFab(): void {
+    this.onHideFab();
   }
 
   enterProfile(): void {
@@ -65,6 +71,10 @@ class VisibleWebBridge {
   onReaderDetected(): void {
     this.onReaderDetectedCallback();
   }
+
+  onChapterBlocked(): void {
+    this.onReaderBlocked('');
+  }
 }
 
 @ComponentV2
@@ -81,6 +91,12 @@ export struct WebPage {
   @Local progress: number = 0;
   @Local failed: boolean = false;
   @Local errorText: string = '';
+  @Local fabVisible: boolean = true;
+  @Local fabReady: boolean = false;
+  @Local fabX: number = -1;
+  @Local fabY: number = -1;
+  @Local viewportWidth: number = 0;
+  @Local viewportHeight: number = 0;
 
   private controllerAttached: boolean = false;
   private gmScript: string = '';
@@ -88,9 +104,17 @@ export struct WebPage {
   private guardScript: string = '';
   private readerRecoveryQuietUntil: number = 0;
   private bridge: VisibleWebBridge = new VisibleWebBridge();
+  private fabStartX: number = 0;
+  private fabStartY: number = 0;
+  private fabTouchStartX: number = 0;
+  private fabTouchStartY: number = 0;
+  private fabTracking: boolean = false;
+  private fabMoved: boolean = false;
+  @Local fabPressed: boolean = false;
 
   aboutToAppear(): void {
     this.loadScripts();
+    this.loadFabPosition();
     this.prepareHome();
   }
 
@@ -132,9 +156,141 @@ export struct WebPage {
     }
   }
 
+  private async loadFabPosition(): Promise<void> {
+    try {
+      const savedX = await settingsStore.getString('fab_dx', '');
+      const savedY = await settingsStore.getString('fab_dy', '');
+      if (savedX.length > 0 && savedY.length > 0) {
+        const x = Number(savedX);
+        const y = Number(savedY);
+        if (!Number.isNaN(x) && !Number.isNaN(y)) {
+          this.fabX = x;
+          this.fabY = y;
+        }
+      }
+    } catch (error) {
+    }
+    this.placeFabWithinBounds();
+  }
+
+  private placeFabWithinBounds(): void {
+    if (this.viewportWidth <= 0 || this.viewportHeight <= 0) {
+      return;
+    }
+    const size = 48;
+    const minX = 12;
+    const maxX = Math.max(minX, this.viewportWidth - size - 12);
+    const minY = 72;
+    const safeBottom = Math.max(80, this.navigationInset() + 52);
+    const maxY = Math.max(minY, this.viewportHeight - size - safeBottom);
+    if (this.fabX < 0 || this.fabY < 0) {
+      this.fabX = maxX;
+      this.fabY = maxY;
+    } else {
+      this.fabX = Math.max(minX, Math.min(maxX, this.fabX));
+      this.fabY = Math.max(minY, Math.min(maxY, this.fabY));
+    }
+    this.fabReady = true;
+  }
+
+  private navigationInset(): number {
+    const inset = AppStorage.get<number>('navIndicatorVp');
+    return inset === undefined ? 8 : Math.max(8, inset);
+  }
+
+  private async saveFabPosition(): Promise<void> {
+    try {
+      await settingsStore.putString('fab_dx', this.fabX.toString());
+      await settingsStore.putString('fab_dy', this.fabY.toString());
+    } catch (error) {
+    }
+  }
+
+  private touchPoint(event: TouchEvent): TouchObject | null {
+    if ((event.type === TouchType.Up || event.type === TouchType.Cancel) && event.changedTouches.length > 0) {
+      return event.changedTouches[0];
+    }
+    if (event.touches.length > 0) {
+      return event.touches[0];
+    }
+    if (event.changedTouches.length > 0) {
+      return event.changedTouches[0];
+    }
+    return null;
+  }
+
+  private handleFabTouch(event: TouchEvent): void {
+    const point = this.touchPoint(event);
+    if (event.type === TouchType.Down && point !== null) {
+      this.fabTouchStartX = point.windowX;
+      this.fabTouchStartY = point.windowY;
+      this.fabStartX = this.fabX;
+      this.fabStartY = this.fabY;
+      this.fabTracking = true;
+      this.fabMoved = false;
+      this.fabPressed = true;
+      event.stopPropagation();
+      return;
+    }
+    if (event.type === TouchType.Move && this.fabTracking && point !== null) {
+      const dx = point.windowX - this.fabTouchStartX;
+      const dy = point.windowY - this.fabTouchStartY;
+      if (Math.sqrt(dx * dx + dy * dy) >= 6) {
+        this.fabMoved = true;
+      }
+      if (this.fabMoved) {
+        this.fabX = this.fabStartX + dx;
+        this.fabY = this.fabStartY + dy;
+        this.placeFabWithinBounds();
+      }
+      event.stopPropagation();
+      return;
+    }
+    if (event.type === TouchType.Up) {
+      if (!this.fabTracking) {
+        this.fabPressed = false;
+        return;
+      }
+      if (point !== null) {
+        const dx = point.windowX - this.fabTouchStartX;
+        const dy = point.windowY - this.fabTouchStartY;
+        if (Math.sqrt(dx * dx + dy * dy) >= 6) {
+          this.fabMoved = true;
+          this.fabX = this.fabStartX + dx;
+          this.fabY = this.fabStartY + dy;
+          this.placeFabWithinBounds();
+        }
+      }
+      const moved = this.fabMoved;
+      this.fabTracking = false;
+      this.fabMoved = false;
+      this.fabPressed = false;
+      event.stopPropagation();
+      if (moved) {
+        this.saveFabPosition();
+      } else {
+        this.onOpenSettings();
+      }
+      return;
+    }
+    if (event.type === TouchType.Cancel) {
+      this.fabTracking = false;
+      this.fabMoved = false;
+      this.fabPressed = false;
+      event.stopPropagation();
+    }
+  }
+
   private configureBridge(): void {
     this.bridge.onReaderBlocked = (_value: string): void => {
       this.showToast('阅读器开发中');
+    };
+    this.bridge.onHideFab = (): void => {
+      if (this.showBack) {
+        this.fabVisible = false;
+      } else {
+        this.fabVisible = true;
+      }
     };
     this.bridge.onOpenSettings = (): void => {
       this.onOpenSettings();
@@ -186,6 +342,24 @@ export struct WebPage {
     }
   }
 
+  private refreshPage(): void {
+    if (!this.controllerAttached) {
+      return;
+    }
+    this.failed = false;
+    this.errorText = '';
+    this.loading = true;
+    this.progress = 0;
+    try {
+      this.controller.refresh();
+    } catch (error) {
+      const value = error as Error;
+      this.errorText = value.message !== undefined && value.message.length > 0 ? value.message : '刷新失败';
+      this.failed = true;
+      this.loading = false;
+    }
+  }
+
   private handleReaderDetected(): void {
     const now = Date.now();
     if (now < this.readerRecoveryQuietUntil) {
@@ -216,6 +390,10 @@ export struct WebPage {
     try {
       await this.controller.runJavaScript(this.gmScript);
       await this.controller.runJavaScript(this.interfaceScript);
+      // i.js 的首次 hideFab 针对旧版上下文下载按钮；根模式仍需保留设置逃生入口。
+      if (!this.showBack) {
+        this.fabVisible = true;
+      }
       await this.controller.runJavaScript(this.guardScript);
     } catch (error) {
       const value = error as Error;
@@ -244,7 +422,8 @@ export struct WebPage {
   }
 
   build() {
-    Column() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column() {
       Row({ space: 10 }) {
         if (this.showBack) {
           Button({ type: ButtonType.Circle, stateEffect: true }) {
@@ -275,15 +454,22 @@ export struct WebPage {
         .layoutWeight(1)
 
         Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-            .fontSize(19)
-            .fontColor([$r('app.color.primary')])
+          if (this.loading) {
+            LoadingProgress()
+              .width(19)
+              .height(19)
+              .color($r('app.color.primary'))
+          } else {
+            SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+              .fontSize(19)
+              .fontColor([$r('app.color.primary')])
+          }
         }
         .width(38)
         .height(38)
         .backgroundColor($r('app.color.accent_soft'))
-        .enabled(this.controllerAttached && !this.loading)
-        .onClick(() => this.loadPreparedUrl())
+        .enabled(this.controllerAttached)
+        .onClick(() => this.refreshPage())
       }
       .width('100%')
       .padding({ left: 14, right: 14, top: 12, bottom: 8 })
@@ -325,6 +511,9 @@ export struct WebPage {
           })
           .onPageEnd((event: OnPageEndEvent) => {
             this.loading = false;
+            if (!this.showBack) {
+              this.fabVisible = true;
+            }
             if (event.url.length > 0 && event.url !== 'about:blank' && !this.failed) {
               this.pageUrl = event.url;
               this.injectScripts();
@@ -389,10 +578,47 @@ export struct WebPage {
       }
       .width('100%')
       .layoutWeight(1)
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.page_background'))
+
+      if (!this.showBack && this.fabVisible && this.fabReady) {
+        Row() {
+          SymbolGlyph($r('sys.symbol.gearshape'))
+            .fontSize(23)
+            .fontColor([$r('app.color.primary')])
+        }
+        .justifyContent(FlexAlign.Center)
+        .alignItems(VerticalAlign.Center)
+        .width(48)
+        .height(48)
+        .backgroundColor($r('app.color.nav_surface'))
+        .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+        .borderRadius(24)
+        .shadow({ radius: 14, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 5 })
+        .position({ x: this.fabX, y: this.fabY })
+        .zIndex(8)
+        .scale({ x: this.fabPressed ? 0.95 : 1, y: this.fabPressed ? 0.95 : 1 })
+        .animation({ duration: 100, curve: Curve.EaseOut })
+        .accessibilityText('打开设置，可拖动')
+        .onTouch((event: TouchEvent) => {
+          this.handleFabTouch(event);
+        })
+      }
     }
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.page_background'))
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      const width = newArea.width as number;
+      const height = newArea.height as number;
+      if (width > 0 && height > 0) {
+        this.viewportWidth = width;
+        this.viewportHeight = height;
+        this.placeFabWithinBounds();
+      }
+    })
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 }

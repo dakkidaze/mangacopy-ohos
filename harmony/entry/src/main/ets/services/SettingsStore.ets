@@ -91,7 +91,7 @@ export class SettingsStore {
   }
 
   async browseSource(): Promise<string> {
-    return this.getString(KEY_BROWSE_SOURCE, 'webview');
+    return this.getString(KEY_BROWSE_SOURCE, 'api');
   }
 
   async imageCacheLimitMb(): Promise<number> {
