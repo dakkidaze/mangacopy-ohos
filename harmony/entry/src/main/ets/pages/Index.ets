@@ -31,6 +31,7 @@ enum ShellTab {
 struct Index {
   @Local route: AppRoute = AppRoute.Shell;
   @Local tab: ShellTab = ShellTab.Discover;
+  @Local navIndicatorVp: number = 8;
 
   aboutToAppear(): void {
     this.applyPersistedChrome();
@@ -62,6 +63,16 @@ struct Index {
       ctx.getApplicationContext().setColorMode(colorMode);
       const mainWindow = await window.getLastWindow(ctx);
       await mainWindow.setWindowSystemBarEnable(hidden ? ['navigation'] : ['status', 'navigation']);
+      let insetVp = 8;
+      try {
+        const avoid = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+        const measuredVp = mainWindow.getUIContext().px2vp(avoid.bottomRect.height);
+        insetVp = measuredVp > 0 ? measuredVp : 8;
+      } catch (error) {
+        insetVp = 8;
+      }
+      AppStorage.setOrCreate<number>('navIndicatorVp', insetVp);
+      this.navIndicatorVp = insetVp;
     } catch (error) {
     }
   }
@@ -90,6 +101,7 @@ struct Index {
           }
           BottomBar({
             selected: this.tab,
+            navIndicatorVp: this.navIndicatorVp,
             onSelect: (tab: ShellTab): void => {
               this.tab = tab;
             }
@@ -257,7 +269,7 @@ struct DiscoverPlaceholder {
       .scrollBar(BarState.Off)
     }
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
     .backgroundColor($r('app.color.page_background'))
   }
 
@@ -373,7 +385,7 @@ struct MorePage {
       .scrollBar(BarState.Off)
     }
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
     .backgroundColor($r('app.color.page_background'))
   }
 
@@ -432,36 +444,44 @@ struct MorePage {
 @ComponentV2
 struct BottomBar {
   @Param selected: ShellTab = ShellTab.Discover;
+  @Param navIndicatorVp: number = 8;
   @Event onSelect: (tab: ShellTab) => void = (_tab: ShellTab) => {};
+
+  private safeBottom(): number {
+    const stored = AppStorage.get<number>('navIndicatorVp');
+    const inset = stored === undefined ? this.navIndicatorVp : stored;
+    return Math.max(8, inset);
+  }
 
   build() {
     Row() {
-      this.tabItem('◇', '发现', ShellTab.Discover)
-      this.tabItem('•••', '更多', ShellTab.More)
+      this.tabItem($r('sys.symbol.house'), '发现', ShellTab.Discover)
+      this.tabItem($r('sys.symbol.more'), '更多', ShellTab.More)
     }
     .width('100%')
-    .height(72)
-    .padding({ left: 24, right: 24, top: 7, bottom: 7 })
+    .height(56 + this.safeBottom())
+    .padding({ left: 24, right: 24, top: 5, bottom: 7 + this.safeBottom() })
     .backgroundColor($r('app.color.nav_surface'))
     .border({ width: { top: 1 }, color: $r('app.color.divider') })
   }
 
   @Builder
-  tabItem(icon: string, label: string, tab: ShellTab) {
-    Column({ space: 3 }) {
-      Text(icon)
-        .fontSize(tab === ShellTab.More ? 17 : 23)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(tab === this.selected ? $r('app.color.on_primary') : $r('app.color.secondary_text'))
-        .width(54)
-        .height(30)
-        .textAlign(TextAlign.Center)
-        .backgroundColor(tab === this.selected ? $r('app.color.primary') : $r('app.color.nav_surface'))
-        .borderRadius(15)
+  tabItem(symbol: Resource, label: string, tab: ShellTab) {
+    Column({ space: 2 }) {
+      SymbolGlyph(symbol)
+        .fontSize(24)
+        .fontColor([tab === this.selected ? $r('app.color.primary') : $r('app.color.secondary_text')])
       Text(label)
         .fontSize(11)
+        .lineHeight(14)
         .fontWeight(tab === this.selected ? FontWeight.Bold : FontWeight.Medium)
         .fontColor(tab === this.selected ? $r('app.color.primary') : $r('app.color.secondary_text'))
+      Row()
+        .width(18)
+        .height(2)
+        .opacity(tab === this.selected ? 1 : 0)
+        .backgroundColor($r('app.color.primary'))
+        .borderRadius(1)
     }
     .justifyContent(FlexAlign.Center)
     .layoutWeight(1)

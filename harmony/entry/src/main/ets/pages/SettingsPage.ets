@@ -26,6 +26,216 @@ function abilityContext(): common.UIAbilityContext | undefined {
 }
 
 @ComponentV2
+struct SettingsSectionHeader {
+  @Param index: string = '';
+  @Param title: string = '';
+  @Param subtitle: string = '';
+
+  build() {
+    Row({ space: 10 }) {
+      Text(this.index)
+        .fontSize(11)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.accent'))
+        .width(28)
+      Column({ space: 2 }) {
+        Text(this.title)
+          .fontSize(17)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.primary_text'))
+        Text(this.subtitle)
+          .fontSize(11)
+          .fontColor($r('app.color.secondary_text'))
+      }
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .padding({ top: 14, bottom: 2 })
+  }
+}
+
+@ComponentV2
+struct SettingsRule {
+  build() {
+    Divider()
+      .strokeWidth(1)
+      .color($r('app.color.divider'))
+      .margin({ left: 16, right: 16 })
+  }
+}
+
+@ComponentV2
+struct SettingsSwitchRow {
+  @Param title: string = '';
+  @Param subtitle: string = '';
+  @Param value: boolean = false;
+  @Event onChange: (value: boolean) => void = (_value: boolean) => {};
+
+  build() {
+    Row({ space: 12 }) {
+      Column({ space: 4 }) {
+        Text(this.title)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.primary_text'))
+        Text(this.subtitle)
+          .fontSize(12)
+          .lineHeight(18)
+          .fontColor($r('app.color.secondary_text'))
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: this.value })
+        .selectedColor($r('app.color.primary'))
+        .onChange((checked: boolean) => this.onChange(checked))
+    }
+    .width('100%')
+    .padding({ left: 16, right: 14, top: 14, bottom: 14 })
+  }
+}
+
+@ComponentV2
+struct SettingsValueHeader {
+  @Param title: string = '';
+  @Param value: string = '';
+
+  build() {
+    Row() {
+      Text(this.title)
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.primary_text'))
+      Blank()
+      Text(this.value)
+        .fontSize(12)
+        .fontColor($r('app.color.accent'))
+    }
+    .width('100%')
+  }
+}
+
+@ComponentV2
+struct SettingsSegmentOption {
+  @Param label: string = '';
+  @Param value: string = '';
+  @Param selected: string = '';
+  @Param itemWidth: string = '48.5%';
+  @Event onSelect: (value: string) => void = (_value: string) => {};
+
+  build() {
+    Button(this.label)
+      .type(ButtonType.Normal)
+      .width(this.itemWidth)
+      .height(40)
+      .margin({ bottom: 8 })
+      .fontSize(13)
+      .fontWeight(this.value === this.selected ? FontWeight.Bold : FontWeight.Regular)
+      .fontColor(this.value === this.selected ? $r('app.color.on_primary') : $r('app.color.primary_text'))
+      .backgroundColor(this.value === this.selected ? $r('app.color.primary') : $r('app.color.surface_variant'))
+      .borderRadius(12)
+      .onClick(() => this.onSelect(this.value))
+  }
+}
+
+@ComponentV2
+struct SettingsChoiceOption {
+  @Param title: string = '';
+  @Param subtitle: string = '';
+  @Param value: string = '';
+  @Param selected: string = '';
+  @Event onSelect: (value: string) => void = (_value: string) => {};
+
+  build() {
+    Row({ space: 12 }) {
+      Text(this.value === this.selected ? '●' : '○')
+        .fontSize(18)
+        .fontColor(this.value === this.selected ? $r('app.color.accent') : $r('app.color.secondary_text'))
+      Column({ space: 4 }) {
+        Text(this.title)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.primary_text'))
+        Text(this.subtitle)
+          .fontSize(12)
+          .fontColor($r('app.color.secondary_text'))
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      Text(this.value === this.selected ? '已选' : '')
+        .fontSize(11)
+        .fontColor($r('app.color.accent'))
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(this.value === this.selected ? $r('app.color.accent_soft') : $r('app.color.surface'))
+    .border({
+      width: 1,
+      color: this.value === this.selected ? $r('app.color.accent') : $r('app.color.divider')
+    })
+    .borderRadius(18)
+    .onClick(() => this.onSelect(this.value))
+  }
+}
+
+@ComponentV2
+struct SettingsDomainLine {
+  @Param kind: string = '';
+  @Param domain: string = '';
+  @Param state: string = '';
+
+  build() {
+    Row({ space: 10 }) {
+      Text(this.kind)
+        .fontSize(10)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.on_primary'))
+        .width(42)
+        .height(24)
+        .textAlign(TextAlign.Center)
+        .backgroundColor(this.kind === 'WEB' ? $r('app.color.primary') : $r('app.color.accent'))
+        .borderRadius(8)
+      Text(this.domain.replace('https://', ''))
+        .fontSize(13)
+        .fontColor($r('app.color.primary_text'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+      Text(this.state)
+        .fontSize(11)
+        .fontColor($r('app.color.secondary_text'))
+    }
+    .width('100%')
+  }
+}
+
+@ComponentV2
+struct SettingsCacheOption {
+  @Param value: number = 0;
+  @Param selected: number = 1024;
+  @Param fullWidth: boolean = false;
+  @Event onSelect: (value: number) => void = (_value: number) => {};
+
+  private label(): string {
+    return this.value === 0 ? '不限' : this.value + ' MB';
+  }
+
+  build() {
+    Button(this.label())
+      .type(ButtonType.Normal)
+      .width(this.fullWidth ? '100%' : '48.5%')
+      .height(38)
+      .margin({ bottom: 8 })
+      .fontSize(12)
+      .fontWeight(this.value === this.selected ? FontWeight.Bold : FontWeight.Regular)
+      .fontColor(this.value === this.selected ? $r('app.color.on_primary') : $r('app.color.primary_text'))
+      .backgroundColor(this.value === this.selected ? $r('app.color.primary') :
+        $r('app.color.surface_variant'))
+      .borderRadius(11)
+      .onClick(() => this.onSelect(this.value))
+  }
+}
+
+@ComponentV2
 export struct SettingsPage {
   @Event onBack: () => void = () => {};
   @Event onOpenDebug: () => void = () => {};
@@ -163,6 +373,11 @@ export struct SettingsPage {
     await settingsStore.putString(KEY_CHAPTER_SOURCE, value);
   }
 
+  private async selectCacheLimit(value: number): Promise<void> {
+    this.imageCacheLimitMb = value;
+    await settingsStore.putInt(KEY_IMAGE_CACHE_LIMIT_MB, value);
+  }
+
   private async setManualDomain(url: string): Promise<void> {
     await UrlManager.setManualUrl(url);
     this.webDomain = UrlManager.activeUrl;
@@ -212,10 +427,6 @@ export struct SettingsPage {
     }
   }
 
-  private cacheLimitLabel(value: number): string {
-    return value === 0 ? '不限' : value + ' MB';
-  }
-
   build() {
     Column() {
       Row({ space: 10 }) {
@@ -244,27 +455,49 @@ export struct SettingsPage {
 
       Scroll() {
         Column({ space: 10 }) {
-          this.sectionHeader('01', '外观', '主题与系统界面')
+          SettingsSectionHeader({ index: '01', title: '外观', subtitle: '主题与系统界面' })
           Column() {
-            this.switchRow('夜间模式', '开启时固定深色；关闭时跟随系统', this.darkMode, (value: boolean): void => {
-              this.setDarkMode(value);
+            SettingsSwitchRow({
+              title: '夜间模式',
+              subtitle: '开启时固定深色；关闭时跟随系统',
+              value: this.darkMode,
+              onChange: (value: boolean): void => {
+                this.setDarkMode(value);
+              }
             })
-            this.rule()
-            this.switchRow('隐藏状态栏', '立即应用，导航栏保持可用', this.hideStatusBar, (value: boolean): void => {
-              this.setHideStatusBar(value);
+            SettingsRule()
+            SettingsSwitchRow({
+              title: '隐藏状态栏',
+              subtitle: '立即应用，导航栏保持可用',
+              value: this.hideStatusBar,
+              onChange: (value: boolean): void => {
+                this.setHideStatusBar(value);
+              }
             })
           }
           .width('100%')
           .backgroundColor($r('app.color.surface'))
           .borderRadius(20)
 
-          this.sectionHeader('02', '阅读', '阅读器接入后沿用这些偏好')
+          SettingsSectionHeader({ index: '02', title: '阅读', subtitle: '阅读器接入后沿用这些偏好' })
           Column({ space: 12 }) {
-            this.fieldLabel('阅读模式', this.readMode === 'h' ? '横向' : this.readMode === 'v' ? '纵向' : '条漫')
-            Row({ space: 8 }) {
-              this.optionChip('横向', 'h', this.readMode, (): void => { this.selectReadMode('h'); })
-              this.optionChip('纵向', 'v', this.readMode, (): void => { this.selectReadMode('v'); })
-              this.optionChip('条漫', 'w', this.readMode, (): void => { this.selectReadMode('w'); })
+            SettingsValueHeader({
+              title: '阅读模式',
+              value: this.readMode === 'h' ? '横向' : this.readMode === 'v' ? '纵向' : '条漫'
+            })
+            Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+              SettingsSegmentOption({
+                label: '横向', value: 'h', selected: this.readMode, itemWidth: '31.5%',
+                onSelect: (value: string): void => { this.selectReadMode(value); }
+              })
+              SettingsSegmentOption({
+                label: '纵向', value: 'v', selected: this.readMode, itemWidth: '31.5%',
+                onSelect: (value: string): void => { this.selectReadMode(value); }
+              })
+              SettingsSegmentOption({
+                label: '条漫', value: 'w', selected: this.readMode, itemWidth: '31.5%',
+                onSelect: (value: string): void => { this.selectReadMode(value); }
+              })
             }
             .width('100%')
           }
@@ -274,37 +507,64 @@ export struct SettingsPage {
           .borderRadius(20)
 
           Column() {
-            this.switchRow('右开本', '仅横向模式生效', this.r2l, (value: boolean): void => {
-              this.r2l = value;
-              settingsStore.putBool(KEY_R2L, value);
+            SettingsSwitchRow({
+              title: '右开本',
+              subtitle: '仅横向模式生效',
+              value: this.r2l,
+              onChange: (value: boolean): void => {
+                this.r2l = value;
+                settingsStore.putBool(KEY_R2L, value);
+              }
             })
-            this.rule()
-            this.switchRow('页码角标', '在阅读页显示当前位置', this.showPageNum, (value: boolean): void => {
-              this.showPageNum = value;
-              settingsStore.putBool(KEY_SHOW_PAGE_NUM, value);
+            SettingsRule()
+            SettingsSwitchRow({
+              title: '页码角标',
+              subtitle: '在阅读页显示当前位置',
+              value: this.showPageNum,
+              onChange: (value: boolean): void => {
+                this.showPageNum = value;
+                settingsStore.putBool(KEY_SHOW_PAGE_NUM, value);
+              }
             })
-            this.rule()
-            this.switchRow('音量键翻页', '阅读器实现后直接生效', this.volTurn, (value: boolean): void => {
-              this.volTurn = value;
-              settingsStore.putBool(KEY_VOL_TURN, value);
+            SettingsRule()
+            SettingsSwitchRow({
+              title: '音量键翻页',
+              subtitle: '阅读器实现后直接生效',
+              value: this.volTurn,
+              onChange: (value: boolean): void => {
+                this.volTurn = value;
+                settingsStore.putBool(KEY_VOL_TURN, value);
+              }
             })
           }
           .width('100%')
           .backgroundColor($r('app.color.surface'))
           .borderRadius(20)
 
-          this.sectionHeader('03', '收图速度', '网络不稳时可选择更保守的档位')
+          SettingsSectionHeader({ index: '03', title: '收图速度', subtitle: '网络不稳时可选择更保守的档位' })
           Column({ space: 12 }) {
-            this.fieldLabel('隐藏页滚动速度', this.sourceProfileLabel())
+            SettingsValueHeader({
+              title: '隐藏页滚动速度',
+              value: this.sourceProfile === 'conservative' ? '保守' :
+                this.sourceProfile === 'normal' ? '普通' : this.sourceProfile === 'turbo' ? '极速' : '快速'
+            })
             Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-              this.wideOptionChip('保守', 'conservative', this.sourceProfile,
-                (): void => { this.selectSourceProfile('conservative'); })
-              this.wideOptionChip('普通', 'normal', this.sourceProfile,
-                (): void => { this.selectSourceProfile('normal'); })
-              this.wideOptionChip('快速', 'fast', this.sourceProfile,
-                (): void => { this.selectSourceProfile('fast'); })
-              this.wideOptionChip('极速', 'turbo', this.sourceProfile,
-                (): void => { this.selectSourceProfile('turbo'); })
+              SettingsSegmentOption({
+                label: '保守', value: 'conservative', selected: this.sourceProfile,
+                onSelect: (value: string): void => { this.selectSourceProfile(value); }
+              })
+              SettingsSegmentOption({
+                label: '普通', value: 'normal', selected: this.sourceProfile,
+                onSelect: (value: string): void => { this.selectSourceProfile(value); }
+              })
+              SettingsSegmentOption({
+                label: '快速', value: 'fast', selected: this.sourceProfile,
+                onSelect: (value: string): void => { this.selectSourceProfile(value); }
+              })
+              SettingsSegmentOption({
+                label: '极速', value: 'turbo', selected: this.sourceProfile,
+                onSelect: (value: string): void => { this.selectSourceProfile(value); }
+              })
             }
             .width('100%')
           }
@@ -313,12 +573,22 @@ export struct SettingsPage {
           .backgroundColor($r('app.color.surface'))
           .borderRadius(20)
 
-          this.sectionHeader('04', '浏览方式', '选择列表与详情的呈现方式')
+          SettingsSectionHeader({ index: '04', title: '浏览方式', subtitle: '选择列表与详情的呈现方式' })
           Column({ space: 10 }) {
-            this.choiceCard('网页版', '保留源站页面与站内功能', 'webview', this.browseSource,
-              (): void => { this.selectBrowseSource('webview'); })
-            this.choiceCard('原生界面', '直接呈现列表与详情，不进入网页阅读器', 'api', this.browseSource,
-              (): void => { this.selectBrowseSource('api'); })
+            SettingsChoiceOption({
+              title: '网页版',
+              subtitle: '保留源站页面与站内功能',
+              value: 'webview',
+              selected: this.browseSource,
+              onSelect: (value: string): void => { this.selectBrowseSource(value); }
+            })
+            SettingsChoiceOption({
+              title: '原生界面',
+              subtitle: '直接呈现列表与详情，不进入网页阅读器',
+              value: 'api',
+              selected: this.browseSource,
+              onSelect: (value: string): void => { this.selectBrowseSource(value); }
+            })
             Text('切换后在下次进入对应页面时生效')
               .fontSize(12)
               .fontColor($r('app.color.secondary_text'))
@@ -326,31 +596,54 @@ export struct SettingsPage {
           }
           .width('100%')
 
-          this.sectionHeader('05', '章节图源', '决定章节图片的获取方式')
+          SettingsSectionHeader({ index: '05', title: '章节图源', subtitle: '决定章节图片的获取方式' })
           Column({ space: 10 }) {
-            this.choiceCard('网页收图', '兼容性较好，部分章节加载较慢', 'webview', this.chapterSource,
-              (): void => { this.selectChapterSource('webview'); })
-            this.choiceCard('API 取图', '速度更快，依赖官方接口', 'api', this.chapterSource,
-              (): void => { this.selectChapterSource('api'); })
+            SettingsChoiceOption({
+              title: '网页收图',
+              subtitle: '兼容性较好，部分章节加载较慢',
+              value: 'webview',
+              selected: this.chapterSource,
+              onSelect: (value: string): void => { this.selectChapterSource(value); }
+            })
+            SettingsChoiceOption({
+              title: 'API 取图',
+              subtitle: '速度更快，依赖官方接口',
+              value: 'api',
+              selected: this.chapterSource,
+              onSelect: (value: string): void => { this.selectChapterSource(value); }
+            })
           }
           .width('100%')
 
-          this.sectionHeader('06', '章末吐槽', '控制阅读流程中的吐槽页')
+          SettingsSectionHeader({ index: '06', title: '章末吐槽', subtitle: '控制阅读流程中的吐槽页' })
           Column() {
-            this.switchRow('显示章末吐槽页', '关闭后不在每章末尾追加', this.chapterEndComments, (value: boolean): void => {
-              this.chapterEndComments = value;
-              settingsStore.putBool(KEY_CHAPTER_END_COMMENTS, value);
+            SettingsSwitchRow({
+              title: '显示章末吐槽页',
+              subtitle: '关闭后不在每章末尾追加',
+              value: this.chapterEndComments,
+              onChange: (value: boolean): void => {
+                this.chapterEndComments = value;
+                settingsStore.putBool(KEY_CHAPTER_END_COMMENTS, value);
+              }
             })
           }
           .width('100%')
           .backgroundColor($r('app.color.surface'))
           .borderRadius(20)
 
-          this.sectionHeader('07', '源站', this.manualMode ? '手动模式' : '自动模式 · 失效或明显过慢才切换')
+          SettingsSectionHeader({
+            index: '07',
+            title: '源站',
+            subtitle: this.manualMode ? '手动模式' : '自动模式 · 失效或明显过慢才切换'
+          })
           Column({ space: 12 }) {
-            this.domainLine('WEB', this.webDomain, this.manualMode ? '已锁定' : '自动')
-            this.rule()
-            this.domainLine('API', this.apiDomain, '自动')
+            SettingsDomainLine({
+              kind: 'WEB',
+              domain: this.webDomain,
+              state: this.manualMode ? '已锁定' : '自动'
+            })
+            SettingsRule()
+            SettingsDomainLine({ kind: 'API', domain: this.apiDomain, state: '自动' })
             if (this.probeNote.length > 0) {
               Text(this.probeNote)
                 .fontSize(12)
@@ -423,18 +716,36 @@ export struct SettingsPage {
           .backgroundColor($r('app.color.surface'))
           .borderRadius(20)
 
-          this.sectionHeader('08', '存储', '图片缓存不包含离线下载')
+          SettingsSectionHeader({ index: '08', title: '存储', subtitle: '图片缓存不包含离线下载' })
           Column({ space: 12 }) {
-            this.fieldLabel('图片缓存上限', this.cacheLimitLabel(this.imageCacheLimitMb))
+            SettingsValueHeader({
+              title: '图片缓存上限',
+              value: this.imageCacheLimitMb === 0 ? '不限' : this.imageCacheLimitMb + ' MB'
+            })
             Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-              this.cacheChip(256)
-              this.cacheChip(512)
-              this.cacheChip(1024)
-              this.cacheChip(2048)
-              this.cacheChip(0)
+              SettingsCacheOption({
+                value: 256, selected: this.imageCacheLimitMb,
+                onSelect: (value: number): void => { this.selectCacheLimit(value); }
+              })
+              SettingsCacheOption({
+                value: 512, selected: this.imageCacheLimitMb,
+                onSelect: (value: number): void => { this.selectCacheLimit(value); }
+              })
+              SettingsCacheOption({
+                value: 1024, selected: this.imageCacheLimitMb,
+                onSelect: (value: number): void => { this.selectCacheLimit(value); }
+              })
+              SettingsCacheOption({
+                value: 2048, selected: this.imageCacheLimitMb,
+                onSelect: (value: number): void => { this.selectCacheLimit(value); }
+              })
+              SettingsCacheOption({
+                value: 0, selected: this.imageCacheLimitMb, fullWidth: true,
+                onSelect: (value: number): void => { this.selectCacheLimit(value); }
+              })
             }
             .width('100%')
-            this.rule()
+            SettingsRule()
             Row({ space: 12 }) {
               Column({ space: 3 }) {
                 Text('清理缓存')
@@ -465,7 +776,7 @@ export struct SettingsPage {
           .backgroundColor($r('app.color.surface'))
           .borderRadius(20)
 
-          this.sectionHeader('09', '调试', '保留数据层联调入口')
+          SettingsSectionHeader({ index: '09', title: '调试', subtitle: '保留数据层联调入口' })
           Row({ space: 12 }) {
             Text('⌘')
               .fontSize(20)
@@ -506,189 +817,5 @@ export struct SettingsPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.page_background'))
-  }
-
-  private sourceProfileLabel(): string {
-    if (this.sourceProfile === 'conservative') {
-      return '保守';
-    }
-    if (this.sourceProfile === 'normal') {
-      return '普通';
-    }
-    if (this.sourceProfile === 'turbo') {
-      return '极速';
-    }
-    return '快速';
-  }
-
-  @Builder
-  sectionHeader(index: string, title: string, subtitle: string) {
-    Row({ space: 10 }) {
-      Text(index)
-        .fontSize(11)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.accent'))
-        .width(28)
-      Column({ space: 2 }) {
-        Text(title)
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.primary_text'))
-        Text(subtitle)
-          .fontSize(11)
-          .fontColor($r('app.color.secondary_text'))
-      }
-      .alignItems(HorizontalAlign.Start)
-    }
-    .width('100%')
-    .padding({ top: 14, bottom: 2 })
-  }
-
-  @Builder
-  switchRow(title: string, subtitle: string, value: boolean, onChange: (value: boolean) => void) {
-    Row({ space: 12 }) {
-      Column({ space: 4 }) {
-        Text(title)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.primary_text'))
-        Text(subtitle)
-          .fontSize(12)
-          .lineHeight(18)
-          .fontColor($r('app.color.secondary_text'))
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-      Toggle({ type: ToggleType.Switch, isOn: value })
-        .selectedColor($r('app.color.primary'))
-        .onChange((checked: boolean) => onChange(checked))
-    }
-    .width('100%')
-    .padding({ left: 16, right: 14, top: 14, bottom: 14 })
-  }
-
-  @Builder
-  rule() {
-    Divider()
-      .strokeWidth(1)
-      .color($r('app.color.divider'))
-      .margin({ left: 16, right: 16 })
-  }
-
-  @Builder
-  fieldLabel(title: string, value: string) {
-    Row() {
-      Text(title)
-        .fontSize(15)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.primary_text'))
-      Blank()
-      Text(value)
-        .fontSize(12)
-        .fontColor($r('app.color.accent'))
-    }
-    .width('100%')
-  }
-
-  @Builder
-  optionChip(label: string, value: string, selected: string, onTap: () => void) {
-    Button(label)
-      .type(ButtonType.Normal)
-      .layoutWeight(1)
-      .height(40)
-      .fontSize(13)
-      .fontWeight(value === selected ? FontWeight.Bold : FontWeight.Regular)
-      .fontColor(value === selected ? $r('app.color.on_primary') : $r('app.color.primary_text'))
-      .backgroundColor(value === selected ? $r('app.color.primary') : $r('app.color.surface_variant'))
-      .borderRadius(12)
-      .onClick(() => onTap())
-  }
-
-  @Builder
-  wideOptionChip(label: string, value: string, selected: string, onTap: () => void) {
-    Button(label)
-      .type(ButtonType.Normal)
-      .width('48.5%')
-      .height(40)
-      .margin({ bottom: 8 })
-      .fontSize(13)
-      .fontWeight(value === selected ? FontWeight.Bold : FontWeight.Regular)
-      .fontColor(value === selected ? $r('app.color.on_primary') : $r('app.color.primary_text'))
-      .backgroundColor(value === selected ? $r('app.color.primary') : $r('app.color.surface_variant'))
-      .borderRadius(12)
-      .onClick(() => onTap())
-  }
-
-  @Builder
-  choiceCard(title: string, subtitle: string, value: string, selected: string, onTap: () => void) {
-    Row({ space: 12 }) {
-      Text(value === selected ? '●' : '○')
-        .fontSize(18)
-        .fontColor(value === selected ? $r('app.color.accent') : $r('app.color.secondary_text'))
-      Column({ space: 4 }) {
-        Text(title)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.primary_text'))
-        Text(subtitle)
-          .fontSize(12)
-          .fontColor($r('app.color.secondary_text'))
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-      Text(value === selected ? '已选' : '')
-        .fontSize(11)
-        .fontColor($r('app.color.accent'))
-    }
-    .width('100%')
-    .padding(15)
-    .backgroundColor(value === selected ? $r('app.color.accent_soft') : $r('app.color.surface'))
-    .border({ width: 1, color: value === selected ? $r('app.color.accent') : $r('app.color.divider') })
-    .borderRadius(18)
-    .onClick(() => onTap())
-  }
-
-  @Builder
-  domainLine(kind: string, domain: string, state: string) {
-    Row({ space: 10 }) {
-      Text(kind)
-        .fontSize(10)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.on_primary'))
-        .width(42)
-        .height(24)
-        .textAlign(TextAlign.Center)
-        .backgroundColor(kind === 'WEB' ? $r('app.color.primary') : $r('app.color.accent'))
-        .borderRadius(8)
-      Text(domain.replace('https://', ''))
-        .fontSize(13)
-        .fontColor($r('app.color.primary_text'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(1)
-      Text(state)
-        .fontSize(11)
-        .fontColor($r('app.color.secondary_text'))
-    }
-    .width('100%')
-  }
-
-  @Builder
-  cacheChip(value: number) {
-    Button(this.cacheLimitLabel(value))
-      .type(ButtonType.Normal)
-      .width(value === 0 ? '100%' : '48.5%')
-      .height(38)
-      .margin({ bottom: 8 })
-      .fontSize(12)
-      .fontWeight(value === this.imageCacheLimitMb ? FontWeight.Bold : FontWeight.Regular)
-      .fontColor(value === this.imageCacheLimitMb ? $r('app.color.on_primary') : $r('app.color.primary_text'))
-      .backgroundColor(value === this.imageCacheLimitMb ? $r('app.color.primary') :
-        $r('app.color.surface_variant'))
-      .borderRadius(11)
-      .onClick(() => {
-        this.imageCacheLimitMb = value;
-        settingsStore.putInt(KEY_IMAGE_CACHE_LIMIT_MB, value);
-      })
   }
 }
