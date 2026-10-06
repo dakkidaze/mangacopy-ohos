@@ -1,0 +1,58 @@
+{
+  "_comment": "本项目自写的拷贝漫画 API 契约（事实性信息，非复制参考仓库文件）。作为实现依据与上游 diff 锚点。",
+  "version": "2026-10-06",
+  "apiVersionHeader": "2025.11.21",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0",
+  "headers": {
+    "Accept": "application/json",
+    "Version": "2025.11.21",
+    "Region": "0",
+    "Webp": "0",
+    "platform": "1",
+    "Origin": "https://www.mangacopy.com",
+    "Referer": "https://www.mangacopy.com/"
+  },
+  "domains": {
+    "bootstrap": ["api.copy4000.com", "api.copy202601.com"],
+    "commentCapable": [
+      "api.copy202601.com",
+      "api.copy4000.com",
+      "api.mangacopy.com",
+      "mapi.copy20.com"
+    ],
+    "hotNoComment": [
+      "api.manga2025.com",
+      "mapi.hotmangasd.com",
+      "mapi.hotmangasf.com",
+      "mapi.hotmangasg.com",
+      "mapi.elfgjfghkk.club",
+      "mapi.fgjfghkk.club",
+      "mapi.fgjfghkkcenter.club"
+    ],
+    "discovery": "/api/v3/system/network4"
+  },
+  "endpoints": {
+    "popular": "GET /api/v3/recs?pos=3200102&limit=21&offset=",
+    "latest": "GET /api/v3/update/newest?limit=21&offset=",
+    "search": "GET /api/v3/search/comic?limit=21&offset=&q=&_update=true",
+    "filter": "GET /api/v3/comics?limit=21&offset=&ordering=&top=&theme=&free_type=&_update=true",
+    "detail": "GET /api/v3/comic2/{path_word}",
+    "chapters": "GET /api/v3/comic/{path_word}/group/{group}/chapters?limit=500&offset=0&_update=true",
+    "pagesNonHot": "GET /api/v3/comic/{path_word}/chapter2/{chapter_uuid}",
+    "pagesHot": "GET /api/v3/comic/{path_word}/chapter/{chapter_uuid}",
+    "chapterComments": "GET /api/v3/roasts?chapter_id={chapter_uuid}&limit=100",
+    "comicComments": "GET /api/v3/comments?comic_id={comic_uuid}&limit=20&offset=0",
+    "login": "POST /api/v3/login (form)",
+    "favorites": "GET /api/v3/member/collect/comics?limit=&offset=&free_type=1&ordering=-datetime_modifier",
+    "history": "GET /api/kb/web/browses?limit=&offset=&free_type=1"
+  },
+  "quirks": [
+    "业务 code 在 body（200 成功），HTTP 可能 200 而 code=210",
+    "roasts 必须传 chapter_id，传 comic_id 返回 210 吐槽對象不能爲空",
+    "评论仅 commentCapable 域可用；其他域返回 404/服务器升级中",
+    "章节端点随域分裂：热辣域用 /chapter/，其余用 /chapter2/",
+    "图片域名 sb.mangafunb.fun；取图无需 Referer",
+    "图片分辨率后缀随域不同：官方 .c1500x / 热辣 .h1500x；改写正则 c\\d+x\\.",
+    "域名强依赖网络出口，无单一默认"
+  ]
+}
