@@ -82,7 +82,7 @@ Kotlin 代码在本地的 `copymanga-src/`（分支 `re_build`）。除「同源
 | `pubspec.yaml` / `pubspec.lock` | 版本与依赖唯一源 |
 | `workflow.md` / `CHANGELOG.md` / `README.md` / `AGENTS.md`（若有） | 发版 SOP 与说明 |
 | `lib/**/*.dart`（尤其 `main.dart`、`browser_page.dart`、`reader_page.dart`、`system_ui.dart`、`splash_page.dart`） | 应用逻辑 |
-| `assets/**`、`tool/**` | 资源与辅助脚本 |
+| `assets/**` | 资源与辅助脚本 |
 | `android/**`、`ios/**`、`.github/**`（除签名隐私文件外） | 平台工程与 CI |
 
 **发版前完整性检查**（在 `copymanga_flutter` 执行，任一项失败则中止发版）：
@@ -349,7 +349,7 @@ gh release view flutter-vX.Y.Z --repo jimytao/copymanga
 
 不需要在 Xcode 里改版本号；以 `pubspec.yaml` 为准。
 
-更换品牌图标时：把源图放到 `assets/icon/ic_launcher.png`，再跑 `python tool/gen_ios_icons.py`（会写 `AppIcon` + `LaunchImage`）；LaunchScreen 背景色与 Splash 一致为 `#FFCC7F`。
+更换品牌图标时：把源图放到 `assets/icon/ic_launcher.png`，再跑本地工具目录下的 gen_ios_icons.py（脚本不入库）（会写 `AppIcon` + `LaunchImage`）；LaunchScreen 背景色与 Splash 一致为 `#FFCC7F`。
 
 ---
 
