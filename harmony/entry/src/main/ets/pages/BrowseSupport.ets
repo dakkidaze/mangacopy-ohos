@@ -312,6 +312,72 @@ export function fadeSwapTransition(): TransitionEffect {
   );
 }
 
+/**
+ * 封面「准一镜」转场的动效口径。
+ *
+ * 这是 geometryTransition（真共享元素一镜到底）不可用时的替代方案。真实结论与依据：
+ * 官方「共享元素转场（一镜到底）」文档写明，geometryTransition 的跨页共享只在
+ * **NavDestination 之间**由系统承接，并且要求**关闭系统默认转场**、把跳转放进
+ * animateTo 闭包。本项目是手写壳（单 @Entry + AppRoute 枚举 + Stack 条件挂载），
+ * 没有 NavDestination，且页面级 .transition(pushTransition()) 自带缩放淡入——
+ * 这条路线在当前结构下不成立；硬改成 Navigation 是大改，不在本次试点范围内。
+ * 因此退而求其次：让详情页封面**从卡片封面的视觉起点**淡入 + 轻微放大到位，
+ * 观感上接住"封面长大成详情页"的那一下，而不是凭空淡入。
+ *
+ * 时长与全局路由转场同拍（进入 280ms Friction），曲线同源；
+ * 起始缩放 0.88 与页面级 0.94 拉开层次：页面整体轻微放大，封面额外多收一点，
+ * 形成"内容从卡片里长出来"的层次差；退场 180ms EaseIn，与全局"退场更短更快"一致。
+ */
+export const COVER_FALLBACK_IN_DURATION: number = 280;
+export const COVER_FALLBACK_OUT_DURATION: number = 180;
+export const COVER_FALLBACK_IN_SCALE: number = 0.88;
+
+/**
+ * 详情页封面的「准一镜」进场转场：淡入 + 从 0.88 放大到位。
+ * 退场侧 IDENTITY —— 详情页封面常驻在树上，退场交给页面级转场，不额外叠一层淡出。
+ */
+export function coverFallbackTransition(): TransitionEffect {
+  return TransitionEffect.asymmetric(
+    TransitionEffect.OPACITY
+      .combine(TransitionEffect.scale({
+        x: COVER_FALLBACK_IN_SCALE,
+        y: COVER_FALLBACK_IN_SCALE
+      }))
+      .animation({ duration: COVER_FALLBACK_IN_DURATION, curve: Curve.Friction }),
+    TransitionEffect.IDENTITY
+  );
+}
+
+/**
+ * 封面图源快照：网格卡点击时写入，详情页首帧读取。
+ *
+ * 详情页的详情数据是异步加载的，转场那一帧大封面还没数据（只有占位底色）。
+ * 这里把封面 URL 递过去，让详情页在**占位期间就能显示同图**，
+ * 配合 coverFallbackTransition 的淡入放大，观感上把"占位 → 真封面"的白闪也一并吃掉。
+ */
+export class CoverShareState {
+  mangaId: string = '';
+  url: string = '';
+
+  set(mangaId: string, url: string): void {
+    this.mangaId = mangaId;
+    this.url = url;
+  }
+
+  /**
+   * 取同源封面 URL（只读，不失效）。
+   *
+   * 与真共享转场不同，这里**不需要** consume-once：详情页可能反复重挂（阅读器返回等），
+   * 每次重挂都希望能立刻显示已有封面而不闪占位。同源校验（mangaId 相等）已经足以
+   * 保证不会串到别的漫画上；换漫画时自然取到空串。
+   */
+  urlFor(mangaId: string): string {
+    return mangaId.length > 0 && this.mangaId === mangaId ? this.url : '';
+  }
+}
+
+export const coverShare: CoverShareState = new CoverShareState();
+
 @ComponentV2
 struct MangaGridCard {
   @Param item: MangaSummary = new MangaSummary('', '', '', '');
@@ -385,7 +451,11 @@ struct MangaGridCard {
         this.pressed = false;
       }
     })
-    .onClick(() => this.onOpen(this.item.id))
+    .onClick(() => {
+      // 把封面 URL 递给详情页：那边首帧就能显示同图，配合淡入放大接住转场（见 coverShare 注释）
+      coverShare.set(this.item.id, this.item.cover);
+      this.onOpen(this.item.id);
+    })
   }
 }
 

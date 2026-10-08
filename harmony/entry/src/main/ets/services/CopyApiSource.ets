@@ -4,6 +4,7 @@
  */
 import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ApiException, ApiClient } from './ApiClient';
 import { isHotDomain } from './ApiHeaders';
 import { authStore } from './AuthStore';
@@ -13,6 +14,84 @@ const K_POS: string = '3200102';
 
 function buildQuery(pairs: Record<string, string>): Record<string, string> {
   return pairs;
+}
+
+// words 页序日志与网页收图共用 Collector tag，便于后续按章节对拍两条链路的页序。
+function wordsLog(message: string): void {
+  hilog.info(0x0000, 'Collector', '%{public}s', 'words 页序：' + message);
+}
+
+// 取证日志里 URL 只留前 80 字符，避免刷屏。
+function shortUrl(url: string): string {
+  return url.length > 80 ? url.substring(0, 80) + '…' : url;
+}
+
+// words 数组前几项的紧凑展示（对拍取证用）。
+function wordsHead(words: number[], max: number): string {
+  const head: string[] = [];
+  const count = Math.min(max, words.length);
+  for (let i = 0; i < count; i++) {
+    head.push(String(words[i]));
+  }
+  return head.join(',') + (words.length > max ? ',…' : '');
+}
+
+/**
+ * words 页序置换（官方版权区防采集：contents 原始顺序被打乱，words 给出还原顺序）。
+ * 语义依据官网 H5 前端源码：r[words[c]] = contents[c]，即 words[i] 是
+ * 原第 i 项在正确阅读序中的目标位置。
+ * 校验不过（缺失或非数组、长度与图片数组不等、存在非法或重复下标）一律原序返回，
+ * 不抛错不打断阅读；单位置换也不重排。
+ */
+function applyWordsOrder(urls: string[], words: Object | undefined | null, chapterId: string): string[] {
+  if (urls.length === 0) {
+    return urls;
+  }
+  if (words === undefined || words === null || !Array.isArray(words)) {
+    wordsLog('字段缺失，原序 章节=' + chapterId);
+    return urls;
+  }
+  const raw = words as Object[];
+  const order: number[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < raw.length; i++) {
+    const item = raw[i];
+    let idx = -1;
+    if (typeof item === 'number') {
+      idx = Math.trunc(item as number);
+    } else if (typeof item === 'string') {
+      const parsed = parseInt(item as string, 10);
+      idx = isNaN(parsed) ? -1 : parsed;
+    }
+    if (idx < 0 || idx >= urls.length || seen.has(idx)) {
+      wordsLog('异常回退（下标非法或重复 idx=' + String(idx) + '） 章节=' + chapterId);
+      return urls;
+    }
+    seen.add(idx);
+    order.push(idx);
+  }
+  if (order.length !== urls.length) {
+    wordsLog('异常回退（长度不等 words=' + order.length + ' 图=' + urls.length + '） 章节=' + chapterId);
+    return urls;
+  }
+  let identity = true;
+  for (let i = 0; i < order.length; i++) {
+    if (order[i] !== i) {
+      identity = false;
+      break;
+    }
+  }
+  if (identity) {
+    wordsLog('单位置换，原序 章节=' + chapterId + ' 首图=' + shortUrl(urls[0]));
+    return urls;
+  }
+  const out: string[] = new Array<string>(urls.length);
+  for (let i = 0; i < order.length; i++) {
+    out[order[i]] = urls[i];
+  }
+  wordsLog('置换已应用 章节=' + chapterId + ' words=[' + wordsHead(order, 8) + ']' +
+    ' 原首图=' + shortUrl(urls[0]) + ' 重排后首图=' + shortUrl(out[0]));
+  return out;
 }
 
 export class CopyApiSource {
@@ -106,7 +185,8 @@ export class CopyApiSource {
 
   /**
    * 7a/7b. 章节图片内容：热辣域 `/chapter`，其余 `/chapter2`（均带 Webp 头，由 ApiClient 头逻辑决定）。
-   * contents[] 兼容 url ?? image ?? src。
+   * contents[] 兼容 url ?? image ?? src；官方可能返回 words 置换数组（版权区防采集），
+   * 有效且非单位置换时按 words 还原阅读序，缺失或异常一律原序（详见 applyWordsOrder）。
    */
   async pages(id: string, chapterId: string): Promise<string[]> {
     const seg = isHotDomain(this.client.domains.active) ? 'chapter' : 'chapter2';
@@ -137,7 +217,8 @@ export class CopyApiSource {
         }
       }
     }
-    return out;
+    // 页序还原：与网页收图（DOM 顺序）链路对拍时，看 Collector 日志里的 words 记录。
+    return applyWordsOrder(out, chapterRec['words'], chapterId);
   }
 
   /** 8. 章末吐槽：必须传 chapter_id（传 comic_id 返回 210）。 */

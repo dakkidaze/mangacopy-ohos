@@ -4,6 +4,8 @@ import {
   BrowseLoadState,
   browseSession,
   BrowseSessionState,
+  coverFallbackTransition,
+  coverShare,
   describeBrowseError,
   fadeSwapTransition,
   getBrowseSource,
@@ -109,10 +111,29 @@ struct DetailStatePanel {
   @Param state: BrowseLoadState = BrowseLoadState.Loading;
   @Param label: string = '';
   @Param errorText: string = '';
+  /**
+   * 点击时由网格卡递过来的封面 URL：详情接口回来前先把封面摆在最终位置上。
+   *
+   * 没有它，详情页首屏是一个 150 高的灰块，等接口返回才"跳"成带封面的详情卡；
+   * 有了它，封面从转场第一帧就在位，后面的淡入放大才有"从卡片长出来"的落点。
+   */
+  @Param shareUrl: string = '';
   @Event onRetry: () => void = () => {};
 
   build() {
     Column({ space: 10 }) {
+      // 封面在加载态就落位：与详情卡里的封面同尺寸同位置，接口回来后只是文字补上，
+      // 封面不发生位移，观感上就是"一张图从卡片里长大、然后内容填进来"。
+      Image(this.shareUrl)
+        .alt($r('app.media.app_icon'))
+        .width(112)
+        .height(154)
+        .objectFit(ImageFit.Cover)
+        .borderRadius(16)
+        .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
+        .transition(coverFallbackTransition())
+        .visibility(this.shareUrl.length > 0 ? Visibility.Visible : Visibility.None)
+
       if (this.state === BrowseLoadState.Loading) {
         LoadingProgress()
           .width(30)
@@ -182,16 +203,26 @@ struct DetailOverview {
   @Event onToggleDescription: () => void = () => {};
   @Event onOpenComments: () => void = () => {};
   @Event onToggleCollect: () => void = () => {};
+  /**
+   * 点击时由网格卡递过来的封面 URL：详情接口返回前先用它顶上。
+   *
+   * 详情页首帧只有占位底色，等接口回来再出图会看到"灰块 → 图片"的白闪。
+   * 这里先用同图顶住（与最终封面同 URL，切换不可见），配合下面的淡入放大接住转场。
+   */
+  @Param shareUrl: string = '';
 
   build() {
     Column({ space: 16 }) {
       Row({ space: 16 }) {
-        Image(this.detail.cover)
+        Image(this.detail.cover.length > 0 ? this.detail.cover : this.shareUrl)
           .alt($r('app.media.app_icon'))
           .width(112)
           .height(154)
           .objectFit(ImageFit.Cover)
           .borderRadius(16)
+          // 「准一镜」进场：淡入 + 从 0.88 放大到位，接住"封面长大成详情页"的那一下。
+          // 真共享元素（geometryTransition）在当前手写壳结构下不可用，依据见 BrowseSupport 的说明。
+          .transition(coverFallbackTransition())
           .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
 
         Column({ space: 9 }) {
@@ -1276,6 +1307,7 @@ export struct DetailPage {
             if (this.detailState === BrowseLoadState.Content && this.detail !== null) {
               DetailOverview({
                 detail: this.detail as MangaDetail,
+                shareUrl: coverShare.urlFor(this.mangaId),
                 expanded: this.descriptionExpanded,
                 collected: this.collected,
                 collectBusy: this.collectBusy,
@@ -1293,6 +1325,7 @@ export struct DetailPage {
                 state: this.detailState,
                 label: '详情',
                 errorText: this.detailError,
+                shareUrl: coverShare.urlFor(this.mangaId),
                 onRetry: (): void => {
                   this.loadDetail();
                 }
