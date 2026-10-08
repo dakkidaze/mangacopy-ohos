@@ -13,23 +13,33 @@
     }
 
     function blockChapterClick(event) {
-        if (!chapterClickTarget(event.target)) return;
-        var now = Date.now();
+        var target = chapterClickTarget(event.target);
+        if (!target || event.isTrusted !== true) return;
+        var text = ((target.textContent || target.innerText) || '').trim();
         event.preventDefault();
         event.stopPropagation();
         if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-        if (window.__cmChapterBlockQuietUntil && now < window.__cmChapterBlockQuietUntil) return;
-        window.__cmChapterBlockQuietUntil = now + 1000;
         try {
-            if (window.GM && typeof window.GM.onChapterBlocked === 'function') {
-                window.GM.onChapterBlocked();
+            if (window.GM && typeof window.GM.chapterClick === 'function') {
+                var getId = window.__cmGestureIds;
+                if (!getId) {
+                    var nonce = Math.random().toString(36).slice(2);
+                    var next = 0;
+                    var events = new WeakMap();
+                    getId = window.__cmGestureIds = function (event) {
+                        if (events.has(event)) return events.get(event);
+                        var id = nonce + '-' + (++next);
+                        events.set(event, id);
+                        return id;
+                    };
+                }
+                window.GM.chapterClick('', text || '', location.href, getId(event));
             }
         } catch (_) {}
     }
 
     if (!window.__cmChapterClickGuardInstalled) {
         window.__cmChapterClickGuardInstalled = true;
-        window.__cmChapterBlockQuietUntil = 0;
         document.addEventListener('click', blockChapterClick, true);
     }
 

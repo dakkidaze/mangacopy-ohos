@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from './Log';
 /**
  * 图片缓存淘汰（近似对齐 Flutter 侧 image_cache_store 的文件级 LRU）。
  *
@@ -29,7 +30,9 @@ const YIELD_EVERY: number = 48;
 
 /** Collector 日志：与 NetStatus / ReaderPage 同一 tag，稀疏输出。 */
 function logCollector(message: string): void {
-  hilog.info(0x0000, 'Collector', '%{public}s', message);
+  if (COLLECTOR_LOG_ENABLED) {
+    hilog.info(0x0000, 'Collector', '%{public}s', message);
+  }
 }
 
 function appContext(): common.UIAbilityContext | null {

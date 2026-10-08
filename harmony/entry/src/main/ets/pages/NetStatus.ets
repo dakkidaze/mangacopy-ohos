@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from '../services/Log';
 /**
  * NetStatus：网络状态探测（独立模块，与阅读器解耦、可复用）。
  *
@@ -66,7 +67,9 @@ const PROBE_TIMEOUT_MS: number = 2500;
 const UNREACHABLE_CODES: number[] = [2300006, 2300007, 2300008, 2300028, 2300052, 2300055, 2300056];
 
 function logCollector(message: string): void {
-  hilog.info(0x0000, 'Collector', '%{public}s', message);
+  if (COLLECTOR_LOG_ENABLED) {
+    hilog.info(0x0000, 'Collector', '%{public}s', message);
+  }
 }
 
 export class NetStatusProbe {

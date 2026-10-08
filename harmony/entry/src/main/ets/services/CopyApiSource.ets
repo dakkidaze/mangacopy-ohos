@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from './Log';
 /**
  * 拷贝漫画 API 图源实现（规格 A.5 全部端点）。
  * 对应 Dart copy_manga_api_source.dart。
@@ -18,7 +19,9 @@ function buildQuery(pairs: Record<string, string>): Record<string, string> {
 
 // words 页序日志与网页收图共用 Collector tag，便于后续按章节对拍两条链路的页序。
 function wordsLog(message: string): void {
-  hilog.info(0x0000, 'Collector', '%{public}s', 'words 页序：' + message);
+  if (COLLECTOR_LOG_ENABLED) {
+    hilog.info(0x0000, 'Collector', '%{public}s', 'words 页序：' + message);
+  }
 }
 
 // 取证日志里 URL 只留前 80 字符，避免刷屏。

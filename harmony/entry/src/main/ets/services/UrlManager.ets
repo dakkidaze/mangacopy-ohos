@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from './Log';
 /**
  * Web 域管理（规格 A.1 / E.1）：候选、probe、sticky（含过慢切换）、rehost、toPcUrl。
  * 对应 Dart url_manager.dart。
@@ -50,16 +51,52 @@ export class UrlManager {
     return out;
   }
 
+  /** URL 归一化：去首尾空白；无协议头则补 https://；空串返回空。 */
+  static normalizeUrl(u: string): string {
+    const text = u.trim();
+    if (text.length === 0) {
+      return '';
+    }
+    if (text.indexOf('http://') === 0 || text.indexOf('https://') === 0) {
+      return text;
+    }
+    return 'https://' + text;
+  }
+
+  /**
+   * 落盘 sticky 源站：写前归一化，保证偏好里永远存带协议头的完整地址。
+   * 裸域名一旦入库，网页侧直接 loadUrl 会被 chromium 判 invalidUrl。
+   */
+  private static async saveActiveUrl(url: string): Promise<void> {
+    await settingsStore.putString(KEY_ACTIVE_URL, UrlManager.normalizeUrl(url));
+  }
+
   /** 仅读本地缓存（manual_url → active_url），不访问网络。返回是否已有缓存/手动源。 */
   static async bootstrap(): Promise<boolean> {
-    const manual = await settingsStore.getString(KEY_MANUAL_URL, '');
+    const manualRaw = await settingsStore.getString(KEY_MANUAL_URL, '');
+    const manual = UrlManager.normalizeUrl(manualRaw);
+    if (manual.length > 0 && manual !== manualRaw) {
+      // 读侧自愈：存量偏好存的可能是裸域名，顺手把修正值写回
+      await settingsStore.putString(KEY_MANUAL_URL, manual);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(DOMAIN, TAG, '自愈 manual_url：%{public}s → %{public}s', manualRaw, manual);
+      }
+    }
     if (manual.length > 0 && UrlManager.candidates.indexOf(manual) >= 0) {
       UrlManager.manualMode = true;
       UrlManager.activeUrl = manual;
       UrlManager.hasCachedUrl = true;
       return true;
     }
-    const cached = await settingsStore.getString(KEY_ACTIVE_URL, '');
+    const cachedRaw = await settingsStore.getString(KEY_ACTIVE_URL, '');
+    const cached = UrlManager.normalizeUrl(cachedRaw);
+    if (cached.length > 0 && cached !== cachedRaw) {
+      // 读侧自愈：同上，修正后写回 active_url
+      await settingsStore.putString(KEY_ACTIVE_URL, cached);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(DOMAIN, TAG, '自愈 active_url：%{public}s → %{public}s', cachedRaw, cached);
+      }
+    }
     if (cached.length > 0 && UrlManager.candidates.indexOf(cached) >= 0) {
       UrlManager.activeUrl = cached;
       UrlManager.hasCachedUrl = true;
@@ -105,12 +142,13 @@ export class UrlManager {
     return url;
   }
 
-  /** 手动指定源站。 */
+  /** 手动指定源站（写侧归一化：入库前补全协议头，避免裸域名进偏好库）。 */
   static async setManualUrl(url: string): Promise<void> {
+    const normalized = UrlManager.normalizeUrl(url);
     UrlManager.manualMode = true;
-    UrlManager.activeUrl = url;
+    UrlManager.activeUrl = normalized;
     UrlManager.hasCachedUrl = true;
-    await settingsStore.putString(KEY_MANUAL_URL, url);
+    await settingsStore.putString(KEY_MANUAL_URL, normalized);
   }
 
   /** 恢复自动选源并立即测速。 */
@@ -180,7 +218,7 @@ export class UrlManager {
     if (!UrlManager.hasCachedUrl) {
       UrlManager.activeUrl = best.url;
       UrlManager.hasCachedUrl = true;
-      await settingsStore.putString(KEY_ACTIVE_URL, UrlManager.activeUrl);
+      await UrlManager.saveActiveUrl(UrlManager.activeUrl);
       UrlManager.lastProbeNote = '首次选源：' + best.url + '（' + best.elapsedMs + 'ms）';
       return UrlManager.activeUrl;
     }
@@ -197,7 +235,7 @@ export class UrlManager {
     if (preferredIdx < 0) {
       const prev = UrlManager.activeUrl;
       UrlManager.activeUrl = best.url;
-      await settingsStore.putString(KEY_ACTIVE_URL, UrlManager.activeUrl);
+      await UrlManager.saveActiveUrl(UrlManager.activeUrl);
       UrlManager.lastProbeNote = '原源站失效（' + prev + '），已切换至 ' + best.url + '（' + best.elapsedMs + 'ms）';
       return UrlManager.activeUrl;
     }
@@ -207,7 +245,7 @@ export class UrlManager {
       const prev = UrlManager.activeUrl;
       const prevMs = valid[preferredIdx].elapsedMs;
       UrlManager.activeUrl = best.url;
-      await settingsStore.putString(KEY_ACTIVE_URL, UrlManager.activeUrl);
+      await UrlManager.saveActiveUrl(UrlManager.activeUrl);
       UrlManager.lastProbeNote =
         '原源站过慢（' + prev + ' ' + prevMs + 'ms），已切换至 ' + best.url + '（' + best.elapsedMs + 'ms）';
       return UrlManager.activeUrl;
@@ -218,7 +256,7 @@ export class UrlManager {
     UrlManager.lastProbeNote = curMs === best.elapsedMs
       ? '保持当前源站 ' + UrlManager.activeUrl + '（' + curMs + 'ms，仍为最快）'
       : '保持当前源站 ' + UrlManager.activeUrl + '（' + curMs + 'ms；最快 ' + best.url + ' ' + best.elapsedMs + 'ms）';
-    await settingsStore.putString(KEY_ACTIVE_URL, UrlManager.activeUrl);
+    await UrlManager.saveActiveUrl(UrlManager.activeUrl);
     return UrlManager.activeUrl;
   }
 
@@ -245,7 +283,9 @@ export class UrlManager {
       return { url: url, elapsedMs: isCopyManga ? Date.now() - startedAt : -1 };
     } catch (error) {
       const be = error as BusinessError;
-      hilog.debug(DOMAIN, TAG, 'validate %{public}s failed: %{public}s', url, be.message);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.debug(DOMAIN, TAG, 'validate %{public}s failed: %{public}s', url, be.message);
+      }
       return { url: url, elapsedMs: -1 };
     } finally {
       request?.destroy();

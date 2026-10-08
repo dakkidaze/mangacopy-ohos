@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from './Log';
 /**
  * API 域名管理（规格 A.1）：
  * 候选列表 + 用户自定义 + `network4` 引导 + 并发探测（sticky）。
@@ -90,7 +91,9 @@ export class ApiDomainManager {
       return host.length > 0 ? ApiDomainManager.normalize(host) : '';
     } catch (error) {
       const be = error as BusinessError;
-      hilog.warn(DOMAIN, TAG, 'network4 failed: %{public}s', be.message);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.warn(DOMAIN, TAG, 'network4 failed: %{public}s', be.message);
+      }
       return '';
     } finally {
       request?.destroy();
@@ -190,7 +193,9 @@ export class ApiDomainManager {
       return { domain: domain, ok: ok, elapsedMs: elapsedMs };
     } catch (error) {
       const be = error as BusinessError;
-      hilog.warn(DOMAIN, TAG, 'probe %{public}s failed: %{public}s', domain, be.message);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.warn(DOMAIN, TAG, 'probe %{public}s failed: %{public}s', domain, be.message);
+      }
       return { domain: domain, ok: false, elapsedMs: Date.now() - startedAt };
     } finally {
       request?.destroy();

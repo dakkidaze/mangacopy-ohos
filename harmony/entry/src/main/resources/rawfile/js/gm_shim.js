@@ -30,7 +30,11 @@ if (typeof window.GM === "undefined") {
             setFab: function (json) { call('setFab', json); },
             setLoadingDialog: function (d) { call('setLoadingDialog', d); },
             setLoadingDialogProgress: function (i, c) { call('setLoadingDialogProgress', i, c); },
-            toggleStatusBar: function () { call('toggleStatusBar'); }
+            toggleStatusBar: function () { call('toggleStatusBar'); },
+            onChapterBlocked: function (text) { call('onChapterBlocked', text || ''); },
+            chapterClick: function (chapterUrl, chapterName, documentUrl, gestureId) { call('chapterClick', chapterUrl, chapterName, documentUrl, gestureId); },
+            chapterGesture: function (documentUrl, gestureId) { call('chapterGesture', documentUrl, gestureId); },
+            onReaderDetected: function () { call('onReaderDetected'); }
         };
     })();
 }

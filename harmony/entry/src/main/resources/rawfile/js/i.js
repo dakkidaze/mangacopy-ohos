@@ -1,5 +1,16 @@
 javascript:
 if (typeof (loaded) == "undefined") {
+    window.__cmGestureIds = window.__cmGestureIds || (function () {
+        var nonce = Math.random().toString(36).slice(2);
+        var next = 0;
+        var events = new WeakMap();
+        return function (event) {
+            if (events.has(event)) return events.get(event);
+            var id = nonce + '-' + (++next);
+            events.set(event, id);
+            return id;
+        };
+    })();
     var loaded = true;
     var invoke = {
         preUrl: "",
@@ -51,14 +62,26 @@ if (typeof (loaded) == "undefined") {
             this._chapterTap = true;
             document.addEventListener("click", function (e) {
                 try {
+                    if (e.isTrusted !== true) return;
                     var t = e.target;
                     if (!t || !t.closest) return;
+                    var documentUrl = location.href;
+                    var id = window.__cmGestureIds(e);
                     var a = t.closest('a[href]');
                     var href = a ? a.getAttribute('href') : '';
-                    if (!href || href.indexOf('/comicContent/') < 0) return;
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    GM.loadComic(new URL(href, location.origin).toString());
+                    if (href && (href.indexOf('/comicContent/') >= 0 || /\/comic\/[^/]+\/chapter\/[^/]+/.test(href))) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        GM.chapterClick(new URL(href, location.origin).toString(), '', documentUrl, id);
+                        return;
+                    }
+                    if (location.pathname.indexOf('/details/comic/') < 0) return;
+                    var button = t.closest('button.publicBackgroundColor.publicBorderColor');
+                    if (!button) return;
+                    var text = (button.innerText || button.textContent || '').replace(/\s+/g, '');
+                    if (text === '開始閱讀' || text === '开始阅读' || /^續看[:：]/.test(text) || /^续看[:：]/.test(text)) {
+                        GM.chapterGesture(documentUrl, id);
+                    }
                 } catch (_) {}
             }, true);
         },

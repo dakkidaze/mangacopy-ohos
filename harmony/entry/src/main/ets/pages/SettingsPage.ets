@@ -318,8 +318,16 @@ struct SettingsCacheOption {
 
 @ComponentV2
 export struct SettingsPage {
+  @Param browseSourceDraft: string = 'api';
+  @Param closing: boolean = false;
+  @Param saveError: boolean = false;
   @Event onBack: () => void = () => {};
-  @Event onOpenDebug: () => void = () => {};
+  /**
+   * 「浏览方式」被改动：通知外壳更新草稿，在退出设置页时统一保存并生效。
+   * 传的是新值（'webview' / 'api'）；未改动则不触发。
+   * 注意：这里只是"有改动"的通知，切根时机由外壳自己掌握（保留设置页退场动画）。
+   */
+  @Event onBrowseSourceChanged: (value: string) => void = (_value: string) => {};
 
   @Local loaded: boolean = false;
   @Local themeMode: string = THEME_SYSTEM;
@@ -332,8 +340,7 @@ export struct SettingsPage {
   @Local volTurn: boolean = false;
   @Local sourceProfile: string = 'fast';
   @Local readerPrefetch: number = 20;
-  @Local browseSource: string = 'api';
-  @Local chapterSource: string = 'api';
+  @Local chapterSource: string = 'webview';
   @Local chapterEndComments: boolean = true;
   @Local imageCacheLimitMb: number = 1024;
 
@@ -377,10 +384,8 @@ export struct SettingsPage {
       this.volTurn = await settingsStore.getBool(KEY_VOL_TURN, false);
       this.sourceProfile = this.validSourceProfile(
         await settingsStore.getString(KEY_SOURCE_PROFILE, 'fast'));
-      this.browseSource = this.validBinarySource(
-        await settingsStore.getString(KEY_BROWSE_SOURCE, 'api'));
       this.chapterSource = this.validBinarySource(
-        await settingsStore.getString(KEY_CHAPTER_SOURCE, 'api'));
+        await settingsStore.getString(KEY_CHAPTER_SOURCE, 'webview'));
       this.readerPrefetch = await settingsStore.getInt(KEY_READER_PREFETCH_COUNT, 20);
       this.chapterEndComments = await settingsStore.getBool(KEY_CHAPTER_END_COMMENTS, true);
       this.imageCacheLimitMb = await settingsStore.getInt(KEY_IMAGE_CACHE_LIMIT_MB, 1024);
@@ -486,9 +491,16 @@ export struct SettingsPage {
     await settingsStore.putString(KEY_SOURCE_PROFILE, value);
   }
 
-  private async selectBrowseSource(value: string): Promise<void> {
-    this.browseSource = value;
-    await settingsStore.putString(KEY_BROWSE_SOURCE, value);
+  private selectBrowseSource(value: string): void {
+    if (this.closing || value === this.browseSourceDraft) {
+      return;
+    }
+    this.onBrowseSourceChanged(value);
+  }
+
+  /** 退出设置页：浏览方式已在选中时通知过外壳，这里只走退场（保留退场动画）。 */
+  private exitSettings(): void {
+    this.onBack();
   }
 
   private async selectChapterSource(value: string): Promise<void> {
@@ -635,7 +647,9 @@ export struct SettingsPage {
   }
 
   private async setManualDomain(url: string): Promise<void> {
-    await UrlManager.setManualUrl(url);
+    // 手动输入归一化：保存前补全协议头（双保险，UrlManager 写侧也会再归一化一次）
+    const normalized = UrlManager.normalizeUrl(url);
+    await UrlManager.setManualUrl(normalized);
     this.webDomain = UrlManager.activeUrl;
     this.manualMode = true;
     this.showDomainChoices = false;
@@ -693,7 +707,8 @@ export struct SettingsPage {
           .fontSize(28)
           .fontColor($r('app.color.primary_text'))
           .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
-          .onClick(() => this.onBack())
+          .enabled(!this.closing)
+          .onClick(() => this.exitSettings())
         Column({ space: 2 }) {
           Text('设置')
             .fontSize(25)
@@ -705,6 +720,11 @@ export struct SettingsPage {
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
+        if (this.closing) {
+          Text('正在保存…').fontSize(12).fontColor($r('app.color.secondary_text'))
+        } else if (this.saveError) {
+          Text('保存失败，请重试').fontSize(12).fontColor($r('app.color.accent'))
+        }
       }
       .width('100%')
       .padding({ left: 18, right: 18, top: 16, bottom: 12 })
@@ -921,22 +941,23 @@ export struct SettingsPage {
               title: '网页版',
               subtitle: '保留源站页面与站内功能',
               value: 'webview',
-              selected: this.browseSource,
+              selected: this.browseSourceDraft,
               onSelect: (value: string): void => { this.selectBrowseSource(value); }
             })
             SettingsChoiceOption({
               title: '原生界面',
               subtitle: '直接呈现列表与详情，不进入网页阅读器',
               value: 'api',
-              selected: this.browseSource,
+              selected: this.browseSourceDraft,
               onSelect: (value: string): void => { this.selectBrowseSource(value); }
             })
-            Text('切换后在下次进入对应页面时生效')
+            Text('退出设置后生效')
               .fontSize(12)
               .fontColor($r('app.color.secondary_text'))
               .padding({ left: 4, top: 2 })
           }
           .width('100%')
+          .enabled(!this.closing)
 
           SettingsSectionHeader({ index: '05', title: '章节图源', subtitle: '决定章节图片的获取方式' })
           Column({ space: 10 }) {
@@ -1222,37 +1243,7 @@ export struct SettingsPage {
           .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
-          SettingsSectionHeader({ index: '09', title: '调试', subtitle: '保留数据层联调入口' })
-          Row({ space: 12 }) {
-            Text('⌘')
-              .fontSize(20)
-              .fontColor($r('app.color.accent'))
-              .width(42)
-              .height(42)
-              .textAlign(TextAlign.Center)
-              .backgroundColor($r('app.color.accent_soft'))
-              .borderRadius(13)
-            Column({ space: 3 }) {
-              Text('进入原调试页')
-                .fontSize(15)
-                .fontWeight(FontWeight.Medium)
-                .fontColor($r('app.color.primary_text'))
-              Text('域名、列表、搜索、登录与日志')
-                .fontSize(12)
-                .fontColor($r('app.color.secondary_text'))
-            }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-            Text('›')
-              .fontSize(24)
-              .fontColor($r('app.color.secondary_text'))
-          }
-          .width('100%')
-          .padding(16)
-          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
-          .borderRadius(20)
-          .onClick(() => this.onOpenDebug())
-          .margin({ bottom: 30 })
+          Blank().height(30)
         }
         .width('100%')
         .padding({ left: 16, right: 16 })

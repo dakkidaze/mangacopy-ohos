@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from './Log';
 /**
  * 拷贝漫画 API 客户端（规格 A.2/A.3/A.4/A.6）：
  * 统一请求头、业务码判定、Cookie 罐、Token、重试、评论域路由、节流。
@@ -120,8 +121,10 @@ export class ApiClient {
       }
     }
     // 诊断：只记长度与条数，绝不记 cookie 值。
-    hilog.info(DOMAIN, TAG, 'set-cookie 原始=%{public}d 字节，jar %{public}d → %{public}d 条',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(DOMAIN, TAG, 'set-cookie 原始=%{public}d 字节，jar %{public}d → %{public}d 条',
       cookieHeader.length, before, this.cookies.size);
+    }
   }
 
   /** 评论请求需路由到支持评论的域（spec A.1）。 */
@@ -150,7 +153,9 @@ export class ApiClient {
         // 章节图片接口用桌面 UA（服务端按 UA 限流：移动 UA 仅前 5 页）
         const desktopUa = path.indexOf('/chapter2/') >= 0 || path.indexOf('/chapter/') >= 0;
         if (desktopUa) {
-          hilog.info(DOMAIN, TAG, 'GET %{public}s 使用桌面 UA（完整章节）', path);
+          if (COLLECTOR_LOG_ENABLED) {
+            hilog.info(DOMAIN, TAG, 'GET %{public}s 使用桌面 UA（完整章节）', path);
+          }
         }
         const res = await this.throttle.run<http.HttpResponse>(
           () => this.doGet(base, path, query, timeoutMs, desktopUa));
@@ -161,7 +166,9 @@ export class ApiClient {
         }
         const be = error as BusinessError;
         lastErr = be.message !== undefined ? be.message : String(error);
-        hilog.warn(DOMAIN, TAG, 'GET %{public}s try %{public}d failed: %{public}s', path, i, lastErr);
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.warn(DOMAIN, TAG, 'GET %{public}s try %{public}d failed: %{public}s', path, i, lastErr);
+        }
         if (i < retries) {
           await sleep(300 * (i + 1)); // 简单退避
         }
@@ -184,7 +191,9 @@ export class ApiClient {
         }
         const be = error as BusinessError;
         lastErr = be.message !== undefined ? be.message : String(error);
-        hilog.warn(DOMAIN, TAG, 'POST %{public}s try %{public}d failed: %{public}s', path, i, lastErr);
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.warn(DOMAIN, TAG, 'POST %{public}s try %{public}d failed: %{public}s', path, i, lastErr);
+        }
         if (i < retries) {
           await sleep(300 * (i + 1));
         }

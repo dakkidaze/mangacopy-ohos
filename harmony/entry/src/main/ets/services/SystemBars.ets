@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from './Log';
 /**
  * 系统栏（状态栏 / 导航指示条）统一控制。
  *
@@ -19,7 +20,9 @@ export async function applyStatusBarVisibility(context: common.UIAbilityContext,
     await mainWindow.setSpecificSystemBarEnabled('status', !hidden);
     statusOk = true;
   } catch (error) {
-    hilog.info(0x0000, 'Collector', '%{public}s', '系统栏：setSpecific(status) 失败，退回旧接口');
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '系统栏：setSpecific(status) 失败，退回旧接口');
+    }
   }
   if (!statusOk) {
     // 仅当状态栏那条本身失败时才退回旧写法（老设备兼容路径）
@@ -29,6 +32,8 @@ export async function applyStatusBarVisibility(context: common.UIAbilityContext,
     // 设置行承诺「导航栏保持可用」：显式确保小白条可见；此条失败不影响状态栏、也不退回旧接口
     await mainWindow.setSpecificSystemBarEnabled('navigationIndicator', true);
   } catch (error) {
-    hilog.info(0x0000, 'Collector', '%{public}s', '系统栏：navigationIndicator 设置失败（忽略，交系统默认）');
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '系统栏：navigationIndicator 设置失败（忽略，交系统默认）');
+    }
   }
 }

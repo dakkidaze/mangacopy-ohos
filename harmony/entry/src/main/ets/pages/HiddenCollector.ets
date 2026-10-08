@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from '../services/Log';
 /**
  * 「网页收图」图源：用隐藏的 Web（PC UA）打开 PC 版章节页，
  * 注入 `gm_shim.js` + `h.js` 自动滚动收集图片，返回 [ChapterData]。
@@ -107,7 +108,9 @@ function truncate(value: string, maxLength: number = 160): string {
 
 function logBatchHead(prefix: string, urls: string[]): void {
   if (urls.length === 0) {
-    hilog.info(0x0000, 'Collector', '%{public}s', prefix + ' [' + urls.length + '] 无新增');
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', prefix + ' [' + urls.length + '] 无新增');
+    }
     return;
   }
   const head: string[] = [];
@@ -115,7 +118,9 @@ function logBatchHead(prefix: string, urls: string[]): void {
   for (let i = 0; i < count; i++) {
     head.push(truncate(urls[i]));
   }
-  hilog.info(0x0000, 'Collector', '%{public}s', prefix + ' 前' + count + '=' + head.join(' | '));
+  if (COLLECTOR_LOG_ENABLED) {
+    hilog.info(0x0000, 'Collector', '%{public}s', prefix + ' 前' + count + '=' + head.join(' | '));
+  }
 }
 
 export function logCollectorBatch(urls: string[]): void {
@@ -132,12 +137,14 @@ function logRawScan(raw: string, cleaned: string[]): void {
   for (let i = 0; i < count; i++) {
     head.push(truncate(cleaned[i]));
   }
-  hilog.info(
+  if (COLLECTOR_LOG_ENABLED) {
+    hilog.info(
     0x0000,
     'Collector',
     '%{public}s',
     '首帧原始片段=' + truncate(raw) + ' || 清洗后前' + count + '=' + head.join(' | ')
   );
+  }
 }
 
 /**
@@ -236,9 +243,13 @@ const historyInFlight: Set<string> = new Set<string>();
 /** 补报云端观看历史：异步、不阻塞首屏，失败静默；同章重读也会再次上报。 */
 export function reportChapterViewOnce(comicId: string, chapterUuid: string): void {
   const key = comicId + '/' + chapterUuid;
-  hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：进入 ' + key);
+  if (COLLECTOR_LOG_ENABLED) {
+    hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：进入 ' + key);
+  }
   if (historyInFlight.has(key)) {
-    hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：跳过（已有进行中请求）' + key);
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：跳过（已有进行中请求）' + key);
+    }
     return;
   }
   historyInFlight.add(key);
@@ -246,11 +257,15 @@ export function reportChapterViewOnce(comicId: string, chapterUuid: string): voi
     return source.pages(comicId, chapterUuid);
   }).then(() => {
     historyInFlight.delete(key);
-    hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：成功 ' + key);
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：成功 ' + key);
+    }
   }).catch((error: Error) => {
     historyInFlight.delete(key);
     const message = error.message !== undefined ? error.message : String(error);
-    hilog.warn(0x0000, 'Collector', '%{public}s', '云端观看历史：失败 ' + key + ' ' + message);
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.warn(0x0000, 'Collector', '%{public}s', '云端观看历史：失败 ' + key + ' ' + message);
+    }
   });
 }
 
@@ -451,8 +466,10 @@ export class HiddenCollector {
     if (!session.identityVerified) {
       session.identityVerified = true;
       session.lastIdentity = data.uuid;
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '身份校验通过(h.js) 请求章=' + session.expectedUuid + ' 页面章=' + data.uuid);
+      }
     }
     // 补齐尾部：以一次性结果为准，补发尚未上报的新增项
     if (data.imgUrls.length > session.reported) {
@@ -499,8 +516,10 @@ export class HiddenCollector {
       return;
     }
     session.lastIdentity = actual;
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '身份校验不符 请求章=' + session.expectedUuid + ' 页面章=' + actual + '，丢弃本次结果');
+    }
   }
 
   /** 增量收图：边收边上报；同一时刻只允许一个任务。 */
@@ -577,8 +596,10 @@ export class HiddenCollector {
         if (!activeNow.identityVerified) {
           activeNow.identityVerified = true;
           activeNow.lastIdentity = pageUuid;
-          hilog.info(0x0000, 'Collector', '%{public}s',
+          if (COLLECTOR_LOG_ENABLED) {
+            hilog.info(0x0000, 'Collector', '%{public}s',
             '身份校验通过 请求章=' + activeNow.expectedUuid + ' 页面章=' + pageUuid);
+          }
         }
         let scanBody = body;
         if (scanBody.indexOf('HEAD:') === 0) {
@@ -627,8 +648,10 @@ export class HiddenCollector {
       if (!active.identityVerified && !active.identityRetried &&
         now - active.startedAt >= COLLECT_IDENTITY_RETRY_MS) {
         active.identityRetried = true;
-        hilog.info(0x0000, 'Collector', '%{public}s',
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s',
           '身份未确认，重新导航重试 请求章=' + active.expectedUuid);
+        }
         try {
           controller.loadUrl(this.pcUrl(comicId, chapterUuid));
         } catch (error) {
@@ -637,28 +660,36 @@ export class HiddenCollector {
       }
       if (now - active.lastProgressAt >= COLLECT_IDLE_TIMEOUT_MS) {
         if (!active.identityVerified) {
-          hilog.info(0x0000, 'Collector', '%{public}s',
+          if (COLLECTOR_LOG_ENABLED) {
+            hilog.info(0x0000, 'Collector', '%{public}s',
             '收图停滞：页面身份未确认（请求章=' + active.expectedUuid + '，页面章=' +
             (active.lastIdentity.length > 0 ? active.lastIdentity : '(无法识别)') +
             '），按失败收口，未写盘');
+          }
           this.failSession('网页收图失败（页面身份不符），未写入任何页面');
           return;
         }
-        hilog.info(0x0000, 'Collector', '%{public}s',
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s',
           '收图停滞：' + COLLECT_IDLE_TIMEOUT_MS + 'ms 无新增进度（已收 ' + active.reported +
           ' 张），按停滞收口');
+        }
         this.failSession('网页收图停滞（45 秒无新增进度），已保留已加载页面');
         return;
       }
       if (now - active.startedAt >= COLLECT_TOTAL_TIMEOUT_MS) {
         if (!active.identityVerified) {
-          hilog.info(0x0000, 'Collector', '%{public}s',
+          if (COLLECTOR_LOG_ENABLED) {
+            hilog.info(0x0000, 'Collector', '%{public}s',
             '收图超时：页面身份未确认（请求章=' + active.expectedUuid + '），按失败收口，未写盘');
+          }
           this.failSession('网页收图失败（页面身份不符），未写入任何页面');
           return;
         }
-        hilog.info(0x0000, 'Collector', '%{public}s',
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s',
           '收图总时长触顶：' + COLLECT_TOTAL_TIMEOUT_MS + 'ms（已收 ' + active.reported + ' 张）');
+        }
         this.failSession('网页收图超时，已保留已加载页面');
       }
     }, COLLECT_WATCH_INTERVAL_MS);

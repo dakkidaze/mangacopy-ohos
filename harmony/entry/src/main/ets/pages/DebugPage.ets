@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from '../services/Log';
 /**
  * 数据层调试页。
  * 保留 P1 的域名探测、热门、最新、搜索、登录与日志能力，统一使用状态管理 V2。
@@ -37,7 +38,9 @@ export struct DebugPage {
   private appendLog(line: string): void {
     const stamp = new Date().toISOString().substring(11, 23);
     this.logText = '[' + stamp + '] ' + line + '\n' + this.logText;
-    hilog.info(DOMAIN, TAG, line);
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(DOMAIN, TAG, line);
+    }
   }
 
   private describeError(error: Object): string {

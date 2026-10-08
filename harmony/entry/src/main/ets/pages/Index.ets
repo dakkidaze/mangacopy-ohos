@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from '../services/Log';
 /**
  * 应用唯一入口：内部枚举路由 + Stack 条件挂载。
  * P3–P7 可直接替换发现占位或对应建设中页面，不需要引入 Navigation/router。
@@ -5,10 +6,9 @@
 import { common, Configuration, ConfigurationConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { KEY_HIDE_STATUS_BAR, settingsStore } from '../services/SettingsStore';
+import { KEY_BROWSE_SOURCE, KEY_HIDE_STATUS_BAR, settingsStore } from '../services/SettingsStore';
 import { applyStatusBarVisibility } from '../services/SystemBars';
 import { AccountPage } from './AccountPage';
-import { DebugPage } from './DebugPage';
 import { DetailPage, handleDetailBack, resetDetailSession } from './DetailPage';
 import { DiscoverPage } from './DiscoverPage';
 import { DownloadChaptersPage, DownloadsPage } from './DownloadsPage';
@@ -38,7 +38,6 @@ export enum AppRoute {
   Downloads = 4,
   Settings = 5,
   Web = 6,
-  Debug = 7,
   Search = 8,
   Detail = 9,
   DownloadChapters = 10,
@@ -69,6 +68,10 @@ struct Index {
   /** 阅读器原地切章所需的章节序列（按 index 升序）；离线入口不提供时留空。 */
   @Local readerChapterSequence: ReaderChapterRef[] = [];
   private readerReturnRoute: AppRoute = AppRoute.Detail;
+  @Local settingsDraft: string = 'api';
+  @Local settingsSessionId: number = 0;
+  @Local settingsClosing: boolean = false;
+  @Local settingsSaveFailed: boolean = false;
   private envCallbackId: number = -1;
   private webController: webview.WebviewController = new webview.WebviewController();
 
@@ -96,6 +99,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.settingsSessionId++;
     if (this.envCallbackId < 0) {
       return;
     }
@@ -133,8 +137,8 @@ struct Index {
       if (handleReaderSystemBack()) {
         return true;
       }
-      // 按来源返回（详情进入回详情；下载/离线进入回已下载列表）——与工具栏返回同一口径
-      this.route = this.readerReturnRoute;
+      // 按来源返回（详情进入回详情；网页/下载进入回各自来源）——与工具栏返回同一口径
+      this.backFromReader();
       return true;
     }
     if (this.route === AppRoute.Detail) {
@@ -170,12 +174,9 @@ struct Index {
       }
       return this.handleWebBack();
     }
-    if (this.route === AppRoute.Debug) {
-      this.route = AppRoute.Settings;
-      return true;
-    }
-    if (this.route === AppRoute.Settings && this.webAsRoot) {
-      this.route = AppRoute.Web;
+    if (this.route === AppRoute.Settings) {
+      // 系统返回键退出设置：与顶栏返回同一口径，走 backFromSettings（含浏览方式待生效值的应用）
+      this.backFromSettings();
       return true;
     }
     if (this.webAsRoot && (this.route === AppRoute.Account || this.route === AppRoute.Favorites ||
@@ -249,7 +250,17 @@ struct Index {
   }
 
   private openRoute(route: AppRoute): void {
+    if (route === AppRoute.Settings && this.route !== AppRoute.Settings) {
+      this.beginSettingsSession();
+    }
     this.route = route;
+  }
+
+  private beginSettingsSession(): void {
+    this.settingsSessionId++;
+    this.settingsDraft = this.webAsRoot ? 'webview' : 'api';
+    this.settingsClosing = false;
+    this.settingsSaveFailed = false;
   }
 
   private openDetail(id: string, returnRoute: AppRoute): void {
@@ -261,6 +272,10 @@ struct Index {
     this.route = AppRoute.Detail;
   }
 
+  /**
+   * 阅读器进入口：统一记录来源路由，供 backFromReader / 系统返回键回落。
+   * 详情页进入 → 回详情；网页（含网页根模式）进入 → 回网页页。
+   */
   private openReader(chapterId: string, chapterName: string, chapterSize: number,
     sequence: ReaderChapterRef[]): void {
     if (chapterId.length === 0) {
@@ -275,7 +290,38 @@ struct Index {
     this.route = AppRoute.Reader;
   }
 
+  /**
+   * 网页里点章节 → 原生阅读器。
+   * 唯一的差别是返回路由：网页根模式（browseSource=webview）下必须落回网页根页，
+   * 普通模式下网页是从「更多」推入的，同样回到它自己那一层——两种情况都是 AppRoute.Web。
+   * 走这里时 Detail 从未挂载过，若沿用 openReader 的 AppRoute.Detail 会凭空变出详情页。
+   */
+  private openReaderFromWeb(comicId: string, chapterId: string, chapterName: string,
+    chapterSize: number, sequence: ReaderChapterRef[]): void {
+    if (comicId.length === 0 || chapterId.length === 0) {
+      return;
+    }
+    this.selectedMangaId = comicId;
+    this.readerChapterId = chapterId;
+    this.readerChapterName = chapterName;
+    this.readerChapterSize = chapterSize;
+    this.readerChapterSequence = sequence;
+    this.readerReturnRoute = AppRoute.Web;
+    this.readerSource = 'detail';
+    this.route = AppRoute.Reader;
+  }
+
+  /**
+   * 网页降级出口：打开该漫画的原生详情页。
+   * 返回路由设为 Web——原生详情页在这条链路上是"网页的子页"，关掉它应当回到网页，
+   * 而不是掉到 Shell 的「发现」页（那会让用户在网页模式里迷路）。
+   */
+  private openDetailFromWeb(comicId: string): void {
+    this.openDetail(comicId, AppRoute.Web);
+  }
+
   private backFromReader(): void {
+    // 阅读器为自己的返回路由负责：详情进来回详情，网页进来回网页。
     this.route = this.readerReturnRoute;
   }
 
@@ -330,15 +376,62 @@ struct Index {
   }
 
   private openSettingsFromWeb(): void {
+    this.beginSettingsSession();
     this.route = AppRoute.Settings;
   }
 
-  private backFromSettings(): void {
-    if (this.webAsRoot) {
-      this.route = AppRoute.Web;
+  /**
+   * 退出设置页：先应用待生效的「浏览方式」（网页壳 ↔ 原生壳），再落到对应根。
+   * 设置页在**选中那一刻**就把新值通知过来了（见 SettingsPage.selectBrowseSource），
+   * 所以顶栏返回与系统返回键两条路径都能覆盖到；这里负责真正切根。
+   */
+  private async backFromSettings(): Promise<void> {
+    if (this.settingsClosing) return;
+    this.settingsClosing = true;
+    this.settingsSaveFailed = false;
+    const session = this.settingsSessionId;
+    const value = this.settingsDraft;
+    try {
+      await settingsStore.putString(KEY_BROWSE_SOURCE, value);
+      if (session !== this.settingsSessionId) return;
+      this.applyBrowseSourceChange(value === 'webview');
+      if (this.webAsRoot) this.route = AppRoute.Web;
+      else this.closePage();
+    } catch (error) {
+      if (session === this.settingsSessionId) {
+        this.settingsClosing = false;
+        this.settingsSaveFailed = true;
+        // Brief UI feedback is rendered by SettingsPage.
+      }
+    }
+  }
+
+  /**
+   * 重算根模式（网页壳 ↔ 原生壳）；与当前不一致时才动。
+   *
+   * 状态清理要点：
+   * - webAsRoot 是常驻 WebPage 的挂载开关，必须先改，否则该卸载时还挂着；
+   * - 返回链（detailReturnRoute / readerReturnRoute）指向旧根，一律重置，
+   *   避免从新模式里的页面返回时跳回已经不在栈上的旧根；
+   * - 搜索/详情会话留在原位不清（切换浏览方式不该丢用户正在看的内容）；
+   * - 这里**不设 route**：切根后的落地由调用方（backFromSettings）决定，
+   *   这样设置页能正常退场，而不是被瞬间替换掉。
+   */
+  private applyBrowseSourceChange(nextRoot: boolean): void {
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'WebShell', '浏览方式切换：%{public}s → %{public}s（webAsRoot %{public}s → %{public}s）',
+      this.webAsRoot ? '网页版' : '原生界面', nextRoot ? '网页版' : '原生界面',
+      String(this.webAsRoot), String(nextRoot));
+    }
+    if (nextRoot === this.webAsRoot) {
       return;
     }
-    this.closePage();
+    this.webAsRoot = nextRoot;
+    // 旧根已经不在栈上：所有指向它的返回链都要重指，否则会跳进空洞
+    this.detailReturnRoute = nextRoot ? AppRoute.Web : AppRoute.Shell;
+    this.readerReturnRoute = nextRoot ? AppRoute.Web : AppRoute.Detail;
+    this.tab = ShellTab.Discover;
+    this.detailCommentVisible = false;
   }
 
   private backFromAccount(): void {
@@ -468,15 +561,31 @@ struct Index {
         .transition(this.webAsRoot ? this.pushTransition() : this.baseTransition())
       }
 
-      if (this.route === AppRoute.Web) {
+      // 网页页：webAsRoot 下**常驻不卸载**（普通模式才按路由条件挂载）。
+      // 真机实测：条件挂载时，从原生阅读器返回会让 WebPage 重建，
+      // 重建时用缓存 pageUrl（仍是 /h5/index）重载 → 用户被弹回主页，而不是离开前的 H5 页面。
+      // 对应 Flutter 基线的结论：可见 WebView 必须保活防跳首页。
+      // 常驻后它在 Stack 最底层，其余路由（设置/阅读器/下载…）照旧叠在它上面。
+      if (this.webAsRoot || this.route === AppRoute.Web) {
         WebPage({
           controller: this.webController,
           showBack: !this.webAsRoot,
+          // 只有真正停在网页页时才接管章节：常驻期间被别的路由盖住时要闭嘴
+          active: this.route === AppRoute.Web,
           onExit: (): void => this.closePage(),
           onOpenSettings: (): void => this.openSettingsFromWeb(),
           // 网页根页 FAB 单击 = 我的下载（设置仍由 GM openSettings / 更多页到达）
           onOpenDownloads: (): void => this.openRoute(AppRoute.Downloads),
-          onOpenAccount: (): void => this.openRoute(AppRoute.Account)
+          onOpenAccount: (): void => this.openRoute(AppRoute.Account),
+          // 网页里点章节 → 原生阅读器：返回路由落在网页这一层（见 openReaderFromWeb）
+          onOpenReader: (comicId: string, chapterId: string, chapterName: string, chapterSize: number,
+            sequence: ReaderChapterRef[]): void => {
+            this.openReaderFromWeb(comicId, chapterId, chapterName, chapterSize, sequence);
+          },
+          // 章节握不上时的降级：打开该漫画的原生详情页（返回落回网页）
+          onOpenDetail: (comicId: string): void => {
+            this.openDetailFromWeb(comicId);
+          }
         })
         // 网页根模式下它是底页；普通模式下它是从「更多」推入的上层页
         .transition(this.webAsRoot ? this.baseTransition() : this.pushTransition())
@@ -565,15 +674,14 @@ struct Index {
 
       if (this.route === AppRoute.Settings) {
         SettingsPage({
-          onBack: (): void => this.backFromSettings(),
-          onOpenDebug: (): void => this.openRoute(AppRoute.Debug)
-        })
-        .transition(this.pushTransition())
-      }
-
-      if (this.route === AppRoute.Debug) {
-        DebugPage({
-          onBack: (): void => this.openRoute(AppRoute.Settings)
+          browseSourceDraft: this.settingsDraft,
+          closing: this.settingsClosing,
+          saveError: this.settingsSaveFailed,
+          onBack: (): void => { this.backFromSettings(); },
+          onBrowseSourceChanged: (value: string): void => {
+            if (this.settingsClosing || (value !== 'api' && value !== 'webview')) return;
+            this.settingsDraft = value;
+          }
         })
         .transition(this.pushTransition())
       }
@@ -706,9 +814,9 @@ struct MorePage {
 
           this.groupLabel('应用')
           Column() {
+            // 「网页版」入口已移除：它不改浏览模式、又没有悬浮球，容易被误当成模式切换。
+            // 模式切换统一走「设置 → 浏览方式」。
             this.menuRow('⚙', '设置', '外观、阅读、图源与源站', AppRoute.Settings)
-            this.rule()
-            this.menuRow('◎', '网页版', '打开移动版源站页面', AppRoute.Web)
           }
           .width('100%')
           .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))

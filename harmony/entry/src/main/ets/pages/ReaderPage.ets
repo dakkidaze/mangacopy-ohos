@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from '../services/Log';
 /**
  * 原生阅读器：横向翻页 + 渐进加载 + 断点续读。
  * 图片数据统一遵守「章节图源」设置：API 一次给全；网页收图边收边读。
@@ -784,9 +785,13 @@ export struct ReaderPage {
       this.currentIndex = this.restoreTarget;
     }
     settingsStore.putString(KEY_READ_MODE, this.readMode).then(() => {
-      hilog.info(0x0000, 'Collector', '%{public}s', '阅读模式切换：' + this.modeLabel());
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s', '阅读模式切换：' + this.modeLabel());
+      }
     }).catch((error: Error) => {
-      hilog.info(0x0000, 'Collector', '%{public}s', '阅读模式持久化失败 ' + error.message);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s', '阅读模式持久化失败 ' + error.message);
+      }
     });
     if (wasWebtoon !== this.isWebtoon()) {
       this.aspectRatios.clear();
@@ -901,7 +906,9 @@ export struct ReaderPage {
     if (local.length > 0) {
       if (this.offlineOnlyLocal) {
         // 离线模式：只用本地图，不补报历史（保证飞行模式零请求）
-        hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：离线模式跳过 ' + chapterId);
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s', '云端观看历史：离线模式跳过 ' + chapterId);
+        }
       } else {
         // 离线/本地分支也要补报云端观看历史（否则离线读章不会进历史）
         reportChapterViewOnce(this.comicId, chapterId);
@@ -1041,12 +1048,14 @@ export struct ReaderPage {
       return;
     }
     // 取证：每次有新项，打印已收数量与新增项的前 3 个 URL
-    hilog.info(
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(
       0x0000,
       'Collector',
       '%{public}s',
       '已收 ' + (this.urls.length + batch.length) + ' 新增' + batch.length
     );
+    }
     logCollectorBatch(batch);
     for (let i = 0; i < batch.length; i++) {
       this.urls.push(batch[i]);
@@ -1118,19 +1127,25 @@ export struct ReaderPage {
     }
     this.prefetchRequested = true;
     if (this.offlineOnlyLocal) {
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '80% 预取跳过（离线模式） 下一章=' + next.id);
+      }
       return;
     }
     if (this.chapterSourceIsWeb) {
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '80% 预取跳过（网页收图源不提前启动隐藏收图） 下一章=' + next.id);
+      }
       return;
     }
     const generation = this.chapterGeneration;
     const target = next;
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '80% 预取触发 位置=' + position + '/' + total + ' 下一章=' + target.id + ' ' + target.name);
+    }
     let task = this.chapterPrefetches.get(target.id);
     if (task === undefined) {
       task = loadChapterImages(this.comicId, target.id);
@@ -1141,8 +1156,10 @@ export struct ReaderPage {
       }).catch((_error: Object): void => {
         // 失败就丢掉缓存的任务，切章时按正常路径重试
         this.chapterPrefetches.delete(target.id);
-        hilog.info(0x0000, 'Collector', '%{public}s',
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s',
           '80% 预取失败 下一章=' + target.id);
+        }
       });
     }
     task.then((images: string[]): void => {
@@ -1156,8 +1173,10 @@ export struct ReaderPage {
         warm.push(images[i]);
       }
       this.prewarmUrls = warm;
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '80% 预取完成 下一章=' + target.id + ' 共' + images.length + '张 预热' + warm.length + '张');
+      }
     }).catch((_error: Object): void => {
     });
   }
@@ -1216,9 +1235,11 @@ export struct ReaderPage {
         if (!this.preloadFailedLogged) {
           this.preloadFailedLogged = true;
           const detail = error as BusinessError;
-          hilog.info(0x0000, 'Collector', '%{public}s',
+          if (COLLECTOR_LOG_ENABLED) {
+            hilog.info(0x0000, 'Collector', '%{public}s',
             '邻页预载 preloadItems 失败（不影响翻页，cachedCount 仍兜底） code=' + detail.code +
             ' message=' + detail.message);
+          }
         }
         return;
       }
@@ -1241,8 +1262,10 @@ export struct ReaderPage {
         return;
       }
       // 终态短章（本地/API/预取缓存）：页数不会再涨，门限夹到实际页数，否则永远满足不了
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '短章过门：共' + this.urls.length + '页 < 门限' + wanted + '，按现有页数开门');
+      }
     }
 
     const target = this.clampRestore(this.restoreTarget, this.urls.length);
@@ -1281,7 +1304,9 @@ export struct ReaderPage {
     }
     this.gateArmed = true;
     this.gateTimer = setTimeout(() => {
-      hilog.info(0x0000, 'Collector', '%{public}s', '预载门超时：放行进内容态');
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s', '预载门超时：放行进内容态');
+      }
       this.collectionNote = '首屏仍在加载，已进入阅读，可稍等或重试';
       this.enterContent();
     }, GATE_TIMEOUT_MS);
@@ -1297,7 +1322,9 @@ export struct ReaderPage {
       return;
     }
     this.gateErrorTimer = setTimeout(() => {
-      hilog.info(0x0000, 'Collector', '%{public}s', '预载门：第' + (index + 1) + '页加载失败，宽限后放行');
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s', '预载门：第' + (index + 1) + '页加载失败，宽限后放行');
+      }
       this.collectionNote = '部分图片加载失败，已进入阅读，可重试或切换源站';
       this.enterContent();
     }, GATE_ERROR_GRACE_MS);
@@ -1476,7 +1503,9 @@ export struct ReaderPage {
     this.dataSource.setReloadCount(index, next);
     this.manualRetryRevision++;
     this.retryRevision++;
-    hilog.info(0x0000, 'Collector', '%{public}s', '手动重载 第' + (index + 1) + '页');
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '手动重载 第' + (index + 1) + '页');
+    }
     // 安全网：极端情况下收不到 onComplete/onError 也要撤掉进行中状态，允许再点
     setTimeout(() => {
       if (this.reloadingPages.has(index)) {
@@ -1535,12 +1564,14 @@ export struct ReaderPage {
     this.retriedPages.add(index);
     this.fallbackUrls.set(index, swapped);
     this.retryRevision++;
-    hilog.info(
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(
       0x0000,
       'Collector',
       '%{public}s',
       '换扩展名重试 第' + (index + 1) + '页 → ' + truncateUrl(swapped)
     );
+    }
     return true;
   }
 
@@ -1555,12 +1586,14 @@ export struct ReaderPage {
     for (let i = 0; i < count; i++) {
       head.push(this.urls[i].length > 160 ? this.urls[i].substring(0, 160) + '…' : this.urls[i]);
     }
-    hilog.info(
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(
       0x0000,
       'Collector',
       '%{public}s',
       '阅读器内容态 共' + this.urls.length + '张 前' + count + '=' + head.join(' | ')
     );
+    }
   }
 
   /** 记录新学到的宽高比；只在首次学到或变化明显时触发重建（一帧内多张图只重建一次）。 */
@@ -1817,10 +1850,12 @@ export struct ReaderPage {
    * 想收栏随时点一下（单击「第一点收栏」那条路径原样保留）。
    */
   private handleDoubleTap(x: number, y: number): void {
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '双击判定 x=' + x.toFixed(0) + ' y=' + y.toFixed(0) +
       ' zoom=' + this.zoomScale.toFixed(2) + ' mode=' + this.modeLabel() +
       ' toolbar=' + (this.toolbarShown() ? '开' : '关'));
+    }
     if (this.jumpVisible) {
       return;
     }
@@ -1871,10 +1906,12 @@ export struct ReaderPage {
       offsetY = minY;
     }
     this.animateZoomTo(s, offsetX, offsetY, ZOOM_ANIMATE_IN_MS, '双击放大');
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '双击放大 s=' + s.toFixed(1) + ' 锚点=(' + x.toFixed(0) + ',' + y.toFixed(0) +
       ') offset=(' + offsetX.toFixed(1) + ',' + offsetY.toFixed(1) +
       ') 动画=' + ZOOM_ANIMATE_IN_MS + 'ms');
+    }
   }
 
   /**
@@ -1931,12 +1968,14 @@ export struct ReaderPage {
     const gen = this.zoomAnimGen;
     const startedAt = Date.now();
     this.invalidateBounds();
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '缩放过渡 ' + tag + ' s=' + startScale.toFixed(2) + '→' + targetScale.toFixed(2) +
       ' offset=(' + startX.toFixed(1) + ',' + startY.toFixed(1) + ')→(' +
       targetX.toFixed(1) + ',' + targetY.toFixed(1) + ') 锚点=(' +
       anchor0X.toFixed(1) + ',' + anchor0Y.toFixed(1) + ')→(' +
       anchor1X.toFixed(1) + ',' + anchor1Y.toFixed(1) + ') 时长=' + durationMs + 'ms');
+    }
     const finish = (): void => {
       this.zoomScale = targetScale;
       this.zoomOffsetX = targetX;
@@ -1955,8 +1994,10 @@ export struct ReaderPage {
           this.zoomAnimGuard = -1;
         }
         finish();
-        hilog.info(0x0000, 'Collector', '%{public}s',
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s',
           '缩放过渡结束 ' + tag + ' s=' + targetScale.toFixed(2));
+        }
         return;
       }
       const t = zoomEase(linear);
@@ -1978,7 +2019,9 @@ export struct ReaderPage {
       }
       this.zoomAnimTimer = -1;
       finish();
-      hilog.info(0x0000, 'Collector', '%{public}s', '缩放过渡兜底落位 ' + tag);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s', '缩放过渡兜底落位 ' + tag);
+      }
     }, durationMs + 160);
   }
 
@@ -2047,13 +2090,15 @@ export struct ReaderPage {
    */
   private handleReaderTap(x: number, y: number): void {
     // 取证（排查"点两侧不翻页/点中间不切栏"）：记录坐标、视口、模式与状态
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '点击判定 x=' + x.toFixed(0) + ' y=' + y.toFixed(0) +
       ' 视口=' + this.viewportWidth.toFixed(0) + 'x' + this.viewportHeight.toFixed(0) +
       ' mode=' + this.modeLabel() + ' zoom=' + this.zoomScale.toFixed(2) +
       ' webtoon=' + (this.isWebtoon() ? '1' : '0') +
       ' failed=' + (this.isPageFailed(this.currentIndex) ? '1' : '0') +
       ' dir=' + (this.readLeftMode ? '左开本' : '右开本'));
+    }
     // ---- 落点守卫（排在失败重载/缩放复位/分区之前：点控件不该顺带翻页）----
     // ① 跳页浮层打开中：遮罩自己的 onClick 负责关闭，期间任何点击都不落分区
     if (this.jumpVisible) {
@@ -2269,7 +2314,8 @@ export struct ReaderPage {
         ' 滚动偏移=' + this.webtoonScrollOffset().toFixed(0)) :
       ('imageSize=' + this.currentImageSize().width.toFixed(0) + 'x' +
         this.currentImageSize().height.toFixed(0));
-    hilog.info(
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(
       0x0000,
       'Collector',
       '%{public}s',
@@ -2282,6 +2328,7 @@ export struct ReaderPage {
       ' scaled=' + scaledW.toFixed(0) + 'x' + scaledH.toFixed(0) +
       ' 来源=' + source
     );
+    }
   }
 
   /** 手势结束/复位时补一条收尾诊断，并重置限流计数。 */
@@ -2606,8 +2653,10 @@ export struct ReaderPage {
    */
   private handleChapterEdge(goNext: boolean, action: string): void {
     if (this.switchingChapter) {
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '章节边界 忽略（切章进行中） goNext=' + (goNext ? '1' : '0'));
+      }
       return;
     }
     const now = Date.now();
@@ -2618,9 +2667,11 @@ export struct ReaderPage {
     const adjacent = this.adjacentChapter(goNext);
     if (adjacent === null) {
       this.resetEdgeGuard();
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '章节边界 到头 goNext=' + (goNext ? '1' : '0') +
         ' 序列长度=' + this.chapterSequence.length);
+      }
       this.showToast('已经到头了~');
       return;
     }
@@ -2628,8 +2679,10 @@ export struct ReaderPage {
     if (this.edgeDirection === direction) {
       // 第二次同方向动作 → 切章
       this.resetEdgeGuard();
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '章节边界 确认切章 goNext=' + (goNext ? '1' : '0') + ' action=' + action);
+      }
       this.switchChapter(goNext, action);
       return;
     }
@@ -2642,14 +2695,18 @@ export struct ReaderPage {
     this.edgeTimer = setTimeout(() => {
       this.edgeTimer = -1;
       if (this.edgeDirection !== 0) {
-        hilog.info(0x0000, 'Collector', '%{public}s', '章节边界 确认窗口超时，解除武装');
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s', '章节边界 确认窗口超时，解除武装');
+        }
         this.resetEdgeGuard();
       }
     }, CHAPTER_EDGE_CONFIRM_MS);
     const label = goNext ? '下一章' : '上一章';
     const verb = action === 'tap' ? '按下' : '滑动';
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '章节边界 武装 direction=' + direction + ' action=' + action + ' 目标=' + adjacent.name);
+    }
     this.showToast('再次' + verb + '加载' + label);
   }
 
@@ -2673,9 +2730,11 @@ export struct ReaderPage {
     this.switchingChapter = true;
     // 先落盘**旧章**进度：loadImages 会立刻把 activeChapterId 换成新章
     this.saveProgressFor(this.activeChapterId, this.readingIndex(), this.urls.length, this.collecting);
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '原地切章 ' + (goNext ? '下一' : '上一') + '章 action=' + action +
       ' ' + this.activeChapterId + ' → ' + target.id + ' ' + target.name);
+    }
     this.activeChapterId = target.id;
     this.activeChapterName = target.name;
     this.activeChapterSize = target.size;
@@ -2746,12 +2805,14 @@ export struct ReaderPage {
       }
     }
     this.edgeGestureConsumed = true;
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '到头判定 采纳 主轴=' + main.toFixed(1) + 'vp 阈值=' + minDistance.toFixed(1) +
       'vp 速度=' + velocity.toFixed(0) + 'vp/s 交叉比=' +
       (main > 0 ? (cross / main).toFixed(2) : '0') + ' 用时=' + elapsedMs +
       'ms 位移判=' + (distanceOk ? '过' : '否') + ' 速度判=' + (velocityOk ? '过' : '否') +
       ' goNext=' + (towardNext ? '1' : '0'));
+    }
     this.handleChapterEdge(towardNext, 'swipe');
   }
 
@@ -2800,8 +2861,10 @@ export struct ReaderPage {
       } catch (error) {
         this.volUpRegistered = false;
         const be = error as BusinessError;
-        hilog.info(0x0000, 'Collector', '%{public}s',
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s',
           '音量键翻页：VOL_UP 注册失败 code=' + be.code + ' ' + be.message);
+        }
       }
     }
     if (!this.volDownRegistered) {
@@ -2813,13 +2876,17 @@ export struct ReaderPage {
       } catch (error) {
         this.volDownRegistered = false;
         const be = error as BusinessError;
-        hilog.info(0x0000, 'Collector', '%{public}s',
+        if (COLLECTOR_LOG_ENABLED) {
+          hilog.info(0x0000, 'Collector', '%{public}s',
           '音量键翻页：VOL_DOWN 注册失败 code=' + be.code + ' ' + be.message);
+        }
       }
     }
     if (this.volUpRegistered && this.volDownRegistered) {
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '音量键翻页：inputConsumer 已注册（注册期间系统音量调节被拦截）');
+      }
     }
   }
 
@@ -2905,9 +2972,11 @@ export struct ReaderPage {
       return;
     }
     this.lastVolumeEventAt = now;
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '音量键翻页 source=' + source + ' code=' + code +
       ' idx=' + this.currentIndex + ' 总数=' + this.urls.length);
+    }
     if (code === KeyCode.KEYCODE_VOLUME_UP) {
       this.goPrevious();
     } else {
@@ -3056,15 +3125,19 @@ export struct ReaderPage {
     } catch (error) {
       this.netStatsUnavailable = true;
       const be = error as BusinessError;
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '胶囊：吞吐采样取不到 code=' + be.code + ' ' + be.message + '（此后不再重试）');
+      }
       return '';
     }
   }
 
   private goPrevious(): void {
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       'goPrevious idx=' + this.currentIndex + ' 总数=' + this.urls.length);
+    }
     if (this.urls.length === 0) {
       return;
     }
@@ -3085,8 +3158,10 @@ export struct ReaderPage {
   }
 
   private goNext(): void {
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       'goNext idx=' + this.currentIndex + ' 总数=' + this.urls.length);
+    }
     if (this.urls.length === 0) {
       return;
     }
@@ -3158,10 +3233,14 @@ export struct ReaderPage {
       // 明确不可达：跳过并给出占位原因，UI 只读这个字段
       this.commentState = BrowseLoadState.Empty;
       this.commentsSkipReason = '无网络，不加载吐槽';
-      hilog.info(0x0000, 'Collector', '%{public}s', '章末吐槽：无网络，跳过 ' + chapterId);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s', '章末吐槽：无网络，跳过 ' + chapterId);
+      }
       return;
     }
-    hilog.info(0x0000, 'Collector', '%{public}s', '章末吐槽：开始读取 ' + chapterId);
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '章末吐槽：开始读取 ' + chapterId);
+    }
     this.fetchComments(chapterId, generation, revision);
   }
 
@@ -3175,16 +3254,20 @@ export struct ReaderPage {
       }
       this.comments = list;
       this.commentState = list.length === 0 ? BrowseLoadState.Empty : BrowseLoadState.Content;
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '章末吐槽：完成 ' + chapterId + ' 共' + list.length + '条');
+      }
     } catch (error) {
       if (revision !== this.commentRevision || generation !== this.chapterGeneration) {
         return;
       }
       this.commentErrorText = describeBrowseError(error as Object);
       this.commentState = BrowseLoadState.Error;
-      hilog.info(0x0000, 'Collector', '%{public}s',
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s',
         '章末吐槽：失败 ' + chapterId + ' ' + this.commentErrorText);
+      }
     }
   }
 
@@ -3220,7 +3303,9 @@ export struct ReaderPage {
       this.currentIndex = target;
     }
     this.resetEdgeGuard();
-    hilog.info(0x0000, 'Collector', '%{public}s', '从章末吐槽页返回阅读器');
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '从章末吐槽页返回阅读器');
+    }
     return true;
   }
 
@@ -3251,7 +3336,9 @@ export struct ReaderPage {
     }
     this.resetEdgeGuard();
     this.ensureCommentsLoaded();
-    hilog.info(0x0000, 'Collector', '%{public}s', '跳转到章末吐槽页');
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '跳转到章末吐槽页');
+    }
   }
 
   /**
@@ -3419,7 +3506,9 @@ export struct ReaderPage {
       const ok = focusControl.requestFocus(JUMP_INPUT_ID);
       detail = 'UIContext失败 code=' + be.code + ' ' + be.message + ' → 全局=' + (ok ? '1' : '0');
     }
-    hilog.info(0x0000, 'Collector', '%{public}s', '跳页焦点 ' + stage + ' ' + detail);
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s', '跳页焦点 ' + stage + ' ' + detail);
+    }
   }
 
   /** 跳页：1-based 输入 → clamp → 两套容器各自定位，并落盘进度。 */
@@ -3513,8 +3602,10 @@ export struct ReaderPage {
       return;
     }
     this.jumpToIndex(target);
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '滑杆跳页 → 第' + (target + 1).toString() + '页 共' + this.urls.length + '页');
+    }
   }
 
   /** 横/纵分页：一次一页，点击分区翻页（条漫不走这里）。 */
@@ -3547,24 +3638,28 @@ export struct ReaderPage {
                 return;
               }
               if (error === undefined || error === null) {
-                hilog.info(
+                if (COLLECTOR_LOG_ENABLED) {
+                  hilog.info(
                   0x0000,
                   'Collector',
                   '%{public}s',
                   '图片加载失败 第' + item.page + '页 url=' + truncateUrl(item.url)
                 );
+                }
               } else {
                 const code = error.error !== undefined && error.error !== null ?
                   String(error.error.code) : '无错误码';
                 const message = error.message !== undefined && error.message.length > 0 ?
                   error.message : '无错误信息';
-                hilog.info(
+                if (COLLECTOR_LOG_ENABLED) {
+                  hilog.info(
                   0x0000,
                   'Collector',
                   '%{public}s',
                   '图片加载失败 第' + item.page + '页 code=' + code +
                   ' message=' + message + ' url=' + truncateUrl(item.url)
                 );
+                }
               }
               this.onReloadFailed(item.index);
             })
@@ -3640,7 +3735,9 @@ export struct ReaderPage {
       // 审查结论：本回调只写 currentIndex（顶栏页码胶囊/点击分区/进度等读它），
       // 页内容（LazyForEach 的 Image Stack）读的是 item.index / item.url / failedPages / retryRevision，
       // 没有任何一处读 currentIndex → 换页不会重建页节点；下方各步也都是私有字段或异步落盘。
-      hilog.info(0x0000, 'Collector', '%{public}s', 'Swiper onChange → ' + index);
+      if (COLLECTOR_LOG_ENABLED) {
+        hilog.info(0x0000, 'Collector', '%{public}s', 'Swiper onChange → ' + index);
+      }
       const changed = index !== this.currentIndex;
       this.currentIndex = index;
       if (index >= 0 && index < this.urls.length) {
@@ -3766,13 +3863,15 @@ export struct ReaderPage {
                 const message = (error !== undefined && error !== null &&
                   error.message !== undefined && error.message.length > 0) ?
                   error.message : '无错误信息';
-                hilog.info(
+                if (COLLECTOR_LOG_ENABLED) {
+                  hilog.info(
                   0x0000,
                   'Collector',
                   '%{public}s',
                   '图片加载失败 第' + item.page + '页 message=' + message +
                   ' url=' + truncateUrl(item.url)
                 );
+                }
                 this.onReloadFailed(item.index);
               })
 
@@ -3838,9 +3937,11 @@ export struct ReaderPage {
             // 那会儿还没有任何手指滑出轻点容差，webtoonUserScrolled 仍是 false。
             this.restorePending = false;
             this.restoreAttempts = 0;
-            hilog.info(0x0000, 'Collector', '%{public}s',
+            if (COLLECTOR_LOG_ENABLED) {
+              hilog.info(0x0000, 'Collector', '%{public}s',
               '条漫断点 放弃拉回 start=' + start + ' 目标=' + this.restoreTarget +
               ' 改记进度页=' + (this.readingIndex() + 1));
+            }
             this.saveProgress(this.readingIndex());
           }
         } else {

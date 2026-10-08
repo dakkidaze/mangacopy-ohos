@@ -1,3 +1,4 @@
+import { COLLECTOR_LOG_ENABLED } from '../services/Log';
 /**
  * 章节下载与离线目录索引。
  * 文件协议严格保持：downloads/{comicName}/章节_{uuid前8}/、meta.json、.done、chapters.json。
@@ -1220,8 +1221,10 @@ export class DownloadStore {
       return [];
     }
     comics.sort((left: DownloadedComicInfo, right: DownloadedComicInfo) => left.name.localeCompare(right.name));
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '下载列表扫描 ' + comics.length + ' 部 ' + (Date.now() - started) + 'ms');
+    }
     return comics;
   }
 
@@ -1397,9 +1400,11 @@ export class DownloadStore {
     }
     index.otherBytes = other;
     this.writeIndex(comicDirectory, index);
-    hilog.info(0x0000, 'Collector', '%{public}s',
+    if (COLLECTOR_LOG_ENABLED) {
+      hilog.info(0x0000, 'Collector', '%{public}s',
       '下载列表扫描 重建 ' + baseName(comicDirectory) + ' ' + (Date.now() - started) + 'ms 章节=' +
         index.chapters.length);
+    }
     return index;
   }
 
