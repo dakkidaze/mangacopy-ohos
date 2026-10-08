@@ -11,6 +11,7 @@ import {
   PagingFooter,
   reloadBrowseSession
 } from './BrowseSupport';
+import { themeBackground, themeState } from './ThemeColors';
 
 const MEMBER_PAGE_SIZE: number = 30;
 
@@ -40,7 +41,7 @@ struct LibraryHeader {
       }
       .width(40)
       .height(40)
-      .backgroundColor($r('app.color.surface_variant'))
+      .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
       .onClick(() => this.onBack())
 
       Column({ space: 2 }) {
@@ -96,7 +97,7 @@ struct LoginRequiredPanel {
     .width('calc(100% - 32vp)')
     .height(230)
     .padding(20)
-    .backgroundColor($r('app.color.surface'))
+    .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
     .borderRadius(22)
     .margin({ left: 16, right: 16, top: 24 })
   }
@@ -169,7 +170,7 @@ export struct FavoritesPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 }
@@ -178,6 +179,8 @@ export struct FavoritesPage {
 struct HistoryRow {
   @Param item: MangaSummary = new MangaSummary('', '', '', '');
   @Event onOpen: (id: string) => void = (_id: string) => {};
+  /** TouchDown 即时按压（对齐卡片手感 0.95 / 160ms）：Up 与 Cancel 都要复位，别卡在缩小态。 */
+  @Local pressed: boolean = false;
 
   build() {
     Row({ space: 13 }) {
@@ -186,7 +189,7 @@ struct HistoryRow {
         .width(66)
         .height(88)
         .objectFit(ImageFit.Cover)
-        .backgroundColor($r('app.color.surface_variant'))
+        .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
         .borderRadius(12)
 
       Column({ space: 7 }) {
@@ -221,8 +224,18 @@ struct HistoryRow {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor($r('app.color.surface'))
+    .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
     .borderRadius(16)
+    // 卡片式入口行的按压反馈：0.95 / 160ms FastOutSlowIn（与封面卡片同一档手感）
+    .scale({ x: this.pressed ? 0.95 : 1, y: this.pressed ? 0.95 : 1 })
+    .animation({ duration: 160, curve: Curve.FastOutSlowIn })
+    .onTouch((event: TouchEvent): void => {
+      if (event.type === TouchType.Down) {
+        this.pressed = true;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.pressed = false;
+      }
+    })
     .onClick(() => this.onOpen(this.item.id))
   }
 }
@@ -340,7 +353,7 @@ export struct HistoryPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 }

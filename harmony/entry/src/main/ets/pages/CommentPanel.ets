@@ -4,6 +4,7 @@
  */
 import { Comment } from '../model/Models';
 import { BrowseLoadState, BrowseStatePanel, describeBrowseError, getBrowseSource } from './BrowseSupport';
+import { themeBackground, themeState } from './ThemeColors';
 
 export enum CommentPanelTab {
   Chapter = 'chapter',
@@ -16,6 +17,14 @@ class CommentFeedState {
   @Trace comments: Comment[] = [];
   @Trace errorText: string = '';
   private revision: number = 0;
+
+  /** 清空为初始态：面板每次出场都重载，顺带让在途请求的票据作废。 */
+  reset(): void {
+    this.revision++;
+    this.state = BrowseLoadState.Idle;
+    this.comments = [];
+    this.errorText = '';
+  }
 
   async loadChapter(chapterId: string): Promise<void> {
     if (chapterId.length === 0) {
@@ -135,7 +144,7 @@ struct CommentRow {
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .padding(14)
-    .backgroundColor($r('app.color.surface_variant'))
+    .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
     .borderRadius(16)
   }
 }
@@ -186,6 +195,21 @@ export struct CommentPanel {
   @Local comicFeed: CommentFeedState = new CommentFeedState();
 
   aboutToAppear(): void {
+    this.applyInitialTab();
+    if (this.visible) {
+      this.enterPanel();
+    }
+  }
+
+  // 面板常驻挂载（退场动画要靠内部条件渲染跑完），所以加载时机改由出场触发。
+  @Monitor('visible')
+  onPanelVisibleChanged(_monitor: IMonitor): void {
+    if (this.visible) {
+      this.enterPanel();
+    }
+  }
+
+  private applyInitialTab(): void {
     if (this.initialTab === CommentPanelTab.Comic && this.comicId.length > 0) {
       this.activeTab = CommentPanelTab.Comic;
     } else if (this.chapterId.length > 0) {
@@ -193,6 +217,13 @@ export struct CommentPanel {
     } else {
       this.activeTab = CommentPanelTab.Comic;
     }
+  }
+
+  /** 每次出场重置两路 feed 并按当前 Tab 拉取，与「每次打开都重新创建面板」的老语义一致。 */
+  private enterPanel(): void {
+    this.applyInitialTab();
+    this.chapterFeed.reset();
+    this.comicFeed.reset();
     this.loadActiveFeed();
   }
 
@@ -228,14 +259,22 @@ export struct CommentPanel {
   }
 
   build() {
-    if (this.visible) {
-      Stack({ alignContent: Alignment.Bottom }) {
+    Stack({ alignContent: Alignment.Bottom }) {
+      if (this.visible) {
+        // 遮罩：淡入 200ms、淡出 150ms（出场/退场时长不同，走 asymmetric）
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor($r('app.color.scrim'))
           .onClick(() => this.onClose())
+          .transition(TransitionEffect.asymmetric(
+            TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.EaseOut }),
+            TransitionEffect.OPACITY.animation({ duration: 150, curve: Curve.EaseIn })
+          ))
+      }
 
+      if (this.visible) {
+        // 面板卡片：自底部滑入 280ms Friction；退场 180ms EaseIn 滑出并淡出
         Column() {
           Row()
             .width(42)
@@ -263,7 +302,7 @@ export struct CommentPanel {
             }
             .width(38)
             .height(38)
-            .backgroundColor($r('app.color.surface_variant'))
+            .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
             .onClick(() => this.onClose())
           }
           .width('100%')
@@ -287,7 +326,7 @@ export struct CommentPanel {
             .width('calc(100% - 32vp)')
             .height(46)
             .padding(4)
-            .backgroundColor($r('app.color.surface_variant'))
+            .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
             .borderRadius(23)
             .margin({ left: 16, right: 16, bottom: 4 })
           }
@@ -306,18 +345,21 @@ export struct CommentPanel {
         }
         .width('100%')
         .height('78%')
-        .backgroundColor($r('app.color.surface'))
+        .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
         .borderRadius({ topLeft: 28, topRight: 28 })
         .shadow({ radius: 24, color: $r('app.color.panel_shadow'), offsetX: 0, offsetY: -6 })
         .onClick(() => {})
+        .transition(TransitionEffect.asymmetric(
+          TransitionEffect.translate({ y: '110%' }).animation({ duration: 280, curve: Curve.Friction }),
+          TransitionEffect.translate({ y: '110%' }).combine(TransitionEffect.OPACITY)
+            .animation({ duration: 180, curve: Curve.EaseIn })
+        ))
       }
-      .width('100%')
-      .height('100%')
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-    } else {
-      Column()
-        .width(0)
-        .height(0)
     }
+    .width('100%')
+    .height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    // 面板常驻挂载后，空栈不能挡住底层点击：只有面板在场时才参与命中测试。
+    .hitTestBehavior(this.visible ? HitTestMode.Default : HitTestMode.None)
   }
 }

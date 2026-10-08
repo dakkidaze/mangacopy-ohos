@@ -106,9 +106,11 @@ export class MangaDetail {
   readonly uuid: string; // 供总评接口使用
   readonly region: string; // region.display
   readonly genres: string[]; // theme[]（元素取 name 或原值）
+  /** 是否已收藏：详情接口在 results 层返回 collect（非空=已收藏），不在 comic 内，由 detail() 传入。 */
+  readonly collected: boolean;
 
   constructor(id: string, title: string, cover: string, author: string, description: string,
-    status: string, uuid: string, region: string, genres: string[]) {
+    status: string, uuid: string, region: string, genres: string[], collected: boolean = false) {
     this.id = id;
     this.title = title;
     this.cover = cover;
@@ -118,9 +120,10 @@ export class MangaDetail {
     this.uuid = uuid;
     this.region = region;
     this.genres = genres;
+    this.collected = collected; // 补全：detail() 传入的收藏态需在此赋值，否则构造函数未初始化该字段
   }
 
-  static fromJson(raw: Object): MangaDetail {
+  static fromJson(raw: Object, collected: boolean = false): MangaDetail {
     const m = unwrapComic(raw as Record<string, Object>);
     const genres: string[] = [];
     const theme = m['theme'];
@@ -150,7 +153,8 @@ export class MangaDetail {
       displayValue(m['status']),
       str(m['uuid']),
       displayValue(m['region']),
-      genres
+      genres,
+      collected
     );
   }
 }

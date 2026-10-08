@@ -9,6 +9,7 @@ import { ApiClient, ApiException } from '../services/ApiClient';
 import { CopyApiSource } from '../services/CopyApiSource';
 import { UrlManager } from '../services/UrlManager';
 import { authStore } from '../services/AuthStore';
+import { themeBackground, themeState } from './ThemeColors';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'DebugPage';
@@ -182,7 +183,7 @@ export struct DebugPage {
           .height(40)
           .fontSize(28)
           .fontColor($r('app.color.primary_text'))
-          .backgroundColor($r('app.color.surface_variant'))
+          .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
           .onClick(() => this.onBack())
         Column({ space: 2 }) {
           Text('数据层调试')
@@ -220,7 +221,7 @@ export struct DebugPage {
               TextInput({ text: this.searchInput, placeholder: '输入关键词' })
                 .layoutWeight(1)
                 .height(42)
-                .backgroundColor($r('app.color.field_background'))
+                .backgroundColor(themeBackground('field_background', themeState().amoledActive, themeState().themeRevision))
                 .onChange((value: string) => {
                   this.searchInput = value;
                 })
@@ -236,14 +237,14 @@ export struct DebugPage {
           .width('100%')
           .padding(14)
           .borderRadius(18)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
 
           Column({ space: 8 }) {
             Text('登录').fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.primary_text'))
             TextInput({ text: this.userInput, placeholder: '账号' })
               .width('100%')
               .height(42)
-              .backgroundColor($r('app.color.field_background'))
+              .backgroundColor(themeBackground('field_background', themeState().amoledActive, themeState().themeRevision))
               .onChange((value: string) => {
                 this.userInput = value;
               })
@@ -251,7 +252,7 @@ export struct DebugPage {
               .type(InputType.Password)
               .width('100%')
               .height(42)
-              .backgroundColor($r('app.color.field_background'))
+              .backgroundColor(themeBackground('field_background', themeState().amoledActive, themeState().themeRevision))
               .onChange((value: string) => {
                 this.passInput = value;
               })
@@ -267,7 +268,7 @@ export struct DebugPage {
           .width('100%')
           .padding(14)
           .borderRadius(18)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
 
           Column({ space: 8 }) {
             Row() {
@@ -292,18 +293,19 @@ export struct DebugPage {
           .width('100%')
           .padding(14)
           .borderRadius(18)
-          .backgroundColor($r('app.color.surface_variant'))
+          .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
           .margin({ bottom: 28 })
         }
         .width('100%')
       }
       .layoutWeight(1)
       .scrollBar(BarState.Auto)
+      .edgeEffect(EdgeEffect.Spring)
       .padding({ left: 16, right: 16 })
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
   }
 
   @Builder
@@ -329,7 +331,7 @@ export struct DebugPage {
     .width('100%')
     .padding(14)
     .borderRadius(18)
-    .backgroundColor($r('app.color.surface'))
+    .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
   }
 }
 

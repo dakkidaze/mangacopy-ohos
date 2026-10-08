@@ -25,7 +25,10 @@ export class ApiDomainManager {
     'https://api.copy202601.com',
     'https://api.copy4000.com',
     'https://api.mangacopy.com',
-    'https://mapi.copy20.com'
+    'https://mapi.copy20.com',
+    // 备用域名（2026-10-06 实测可用：章节接口 200）
+    'https://api.copy202602.com',
+    'https://api.manga2026.xyz'
   ];
 
   /** 支持评论（roasts/comments）的域 host（规格 A.1 commentCapableHosts）。 */

@@ -86,7 +86,9 @@ export class CopyApiSource {
     if (comic === undefined || comic === null) {
       return null;
     }
-    return MangaDetail.fromJson(comic);
+    // 收藏状态在 results 层：collect 非空 = 已收藏（匿名/未收藏为 null）
+    const collected = rec['collect'] !== undefined && rec['collect'] !== null;
+    return MangaDetail.fromJson(comic, collected);
   }
 
   /** 6. 章节列表。 */
@@ -196,6 +198,25 @@ export class CopyApiSource {
       'ordering': '-datetime_modifier'
     }));
     return this.summaries(r);
+  }
+
+  /** 11b. 收藏 / 取消收藏（需登录）。端点与参数来自 H5 前端实测。 */
+  async collect(comicId: string, isCollect: boolean): Promise<void> {
+    await this.client.postForm('/api/v3/member/collect/comic', buildQuery({
+      'comic_id': comicId,
+      'is_collect': isCollect ? '1' : '0'
+    }));
+  }
+
+  /**
+   * 11c. 收藏态（需登录）。H5 实测：打开漫画详情时会额外请求 comic2/{path_word}/query?_update=true，
+   * 响应 results.collect 非空即已收藏（匿名/未收藏为 null）。注意用 path_word，不是 uuid。
+   */
+  async collectionState(pathWord: string): Promise<boolean> {
+    const r = await this.client.getJson('/api/v3/comic2/' + pathWord + '/query',
+      buildQuery({ '_update': 'true' }));
+    const rec = r as Record<string, Object>;
+    return rec['collect'] !== undefined && rec['collect'] !== null;
   }
 
   /** 12. 历史（需登录）。 */

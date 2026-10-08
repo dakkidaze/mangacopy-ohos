@@ -1,25 +1,43 @@
 /**
  * 应用设置：所有偏好读写都经 SettingsStore，键名与移植规格 C 保持一致。
  */
-import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ApiDomainManager } from '../services/ApiDomainManager';
+import { applyStatusBarVisibility } from '../services/SystemBars';
 import {
+  KEY_AMOLED_BLACK,
   KEY_BROWSE_SOURCE,
   KEY_CHAPTER_END_COMMENTS,
   KEY_CHAPTER_SOURCE,
-  KEY_DARK_MODE,
   KEY_HIDE_STATUS_BAR,
   KEY_IMAGE_CACHE_LIMIT_MB,
-  KEY_R2L,
+  KEY_READ_DIRECTION,
   KEY_READ_MODE,
   KEY_SHOW_PAGE_NUM,
   KEY_SOURCE_PROFILE,
+  KEY_THEME_MODE,
   KEY_VOL_TURN,
   settingsStore
 } from '../services/SettingsStore';
 import { UrlManager } from '../services/UrlManager';
+import {
+  clearAppCache,
+  clearDownloads,
+  collectStorageStats,
+  formatBytes
+} from './CacheTools';
+import { KEY_READER_PREFETCH_COUNT, READER_PREFETCH_OPTIONS } from './HiddenCollector';
+import {
+  applyThemeMode,
+  THEME_DARK,
+  THEME_LIGHT,
+  THEME_SYSTEM,
+  themeBackground,
+  themeState,
+  validThemeMode
+} from './ThemeColors';
 
 function abilityContext(): common.UIAbilityContext | undefined {
   return AppStorage.get<common.UIAbilityContext>('abilityContext');
@@ -131,7 +149,8 @@ struct SettingsSegmentOption {
       .fontSize(13)
       .fontWeight(this.value === this.selected ? FontWeight.Bold : FontWeight.Regular)
       .fontColor(this.value === this.selected ? $r('app.color.on_primary') : $r('app.color.primary_text'))
-      .backgroundColor(this.value === this.selected ? $r('app.color.primary') : $r('app.color.surface_variant'))
+      .backgroundColor(this.value === this.selected ? $r('app.color.primary') :
+        themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
       .borderRadius(12)
       .onClick(() => this.onSelect(this.value))
   }
@@ -249,6 +268,28 @@ struct SettingsDomainLine {
 }
 
 @ComponentV2
+struct SettingsPrefetchOption {
+  @Param value: number = 20;
+  @Param selected: number = 20;
+  @Event onSelect: (value: number) => void = (_value: number) => {};
+
+  build() {
+    Button(this.value + ' 页')
+      .type(ButtonType.Normal)
+      .width('48.5%')
+      .height(38)
+      .margin({ bottom: 8 })
+      .fontSize(12)
+      .fontWeight(this.value === this.selected ? FontWeight.Bold : FontWeight.Regular)
+      .fontColor(this.value === this.selected ? $r('app.color.on_primary') : $r('app.color.primary_text'))
+      .backgroundColor(this.value === this.selected ? $r('app.color.primary') :
+        themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
+      .borderRadius(11)
+      .onClick(() => this.onSelect(this.value))
+  }
+}
+
+@ComponentV2
 struct SettingsCacheOption {
   @Param value: number = 0;
   @Param selected: number = 1024;
@@ -269,7 +310,7 @@ struct SettingsCacheOption {
       .fontWeight(this.value === this.selected ? FontWeight.Bold : FontWeight.Regular)
       .fontColor(this.value === this.selected ? $r('app.color.on_primary') : $r('app.color.primary_text'))
       .backgroundColor(this.value === this.selected ? $r('app.color.primary') :
-        $r('app.color.surface_variant'))
+        themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
       .borderRadius(11)
       .onClick(() => this.onSelect(this.value))
   }
@@ -281,13 +322,16 @@ export struct SettingsPage {
   @Event onOpenDebug: () => void = () => {};
 
   @Local loaded: boolean = false;
-  @Local darkMode: boolean = false;
+  @Local themeMode: string = THEME_SYSTEM;
+  @Local amoledBlack: boolean = false;
   @Local hideStatusBar: boolean = false;
   @Local readMode: string = 'h';
-  @Local r2l: boolean = true;
+  /** 阅读方向：'left' = 左开本（默认），'right' = 右开本。仅阅读模式为横向时显示该行。 */
+  @Local readDirection: string = 'left';
   @Local showPageNum: boolean = true;
   @Local volTurn: boolean = false;
   @Local sourceProfile: string = 'fast';
+  @Local readerPrefetch: number = 20;
   @Local browseSource: string = 'api';
   @Local chapterSource: string = 'api';
   @Local chapterEndComments: boolean = true;
@@ -299,20 +343,36 @@ export struct SettingsPage {
   @Local showDomainChoices: boolean = false;
   @Local probing: boolean = false;
   @Local probeNote: string = '';
-  @Local cacheNote: string = '缓存统计与清理将在缓存模块接入后可用';
+  /** 缓存统计与清理：storageLabel 即行右侧的「已用 X MB」。 */
+  @Local storageLabel: string = '统计中…';
+  @Local storageSummary: string = '正在统计下载与缓存占用…';
+  @Local storagePanelOpen: boolean = false;
+  @Local statsBusy: boolean = false;
+  @Local clearing: boolean = false;
+  @Local storageActionNote: string = '';
+  @Local downloadBytes: number = 0;
+  @Local cacheBytes: number = 0;
+  @Local comicCount: number = 0;
+  @Local chapterCount: number = 0;
+  @Local pendingChapterCount: number = 0;
 
   private apiDomains: ApiDomainManager = new ApiDomainManager();
 
   aboutToAppear(): void {
     this.loadSettings();
+    // 统计要递归扫描目录：让首帧先渲染再扫，避免打开设置页时卡一下
+    setTimeout(() => this.refreshStorageStats(), 80);
   }
 
   private async loadSettings(): Promise<void> {
     try {
-      this.darkMode = await settingsStore.getBool(KEY_DARK_MODE, false);
+      // 旧布尔 darkMode 由 themeMode() 内部迁移：true → dark，false/缺失 → system
+      this.themeMode = validThemeMode(await settingsStore.themeMode());
+      this.amoledBlack = await settingsStore.amoledBlack();
       this.hideStatusBar = await settingsStore.getBool(KEY_HIDE_STATUS_BAR, false);
       this.readMode = this.validReadMode(await settingsStore.getString(KEY_READ_MODE, 'h'));
-      this.r2l = await settingsStore.getBool(KEY_R2L, true);
+      this.readDirection = this.validReadDirection(
+        await settingsStore.getString(KEY_READ_DIRECTION, 'left'));
       this.showPageNum = await settingsStore.getBool(KEY_SHOW_PAGE_NUM, true);
       this.volTurn = await settingsStore.getBool(KEY_VOL_TURN, false);
       this.sourceProfile = this.validSourceProfile(
@@ -321,6 +381,7 @@ export struct SettingsPage {
         await settingsStore.getString(KEY_BROWSE_SOURCE, 'api'));
       this.chapterSource = this.validBinarySource(
         await settingsStore.getString(KEY_CHAPTER_SOURCE, 'api'));
+      this.readerPrefetch = await settingsStore.getInt(KEY_READER_PREFETCH_COUNT, 20);
       this.chapterEndComments = await settingsStore.getBool(KEY_CHAPTER_END_COMMENTS, true);
       this.imageCacheLimitMb = await settingsStore.getInt(KEY_IMAGE_CACHE_LIMIT_MB, 1024);
       await UrlManager.bootstrap();
@@ -338,6 +399,11 @@ export struct SettingsPage {
     return ['h', 'v', 'w'].indexOf(value) >= 0 ? value : 'h';
   }
 
+  /** 阅读方向只认 left / right，其它值（含旧数据缺失）退回默认的左开本。 */
+  private validReadDirection(value: string): string {
+    return value === 'right' ? 'right' : 'left';
+  }
+
   private validSourceProfile(value: string): string {
     return ['conservative', 'normal', 'fast', 'turbo'].indexOf(value) >= 0 ? value : 'fast';
   }
@@ -353,18 +419,35 @@ export struct SettingsPage {
     }
   }
 
-  private applyTheme(dark: boolean): void {
-    const ctx = abilityContext();
-    if (ctx === undefined) {
-      return;
+  /** 主题模式切换：写库 + 立即应用（setColorMode 走 applyThemeMode，无需重启）。 */
+  private async setThemeMode(value: string): Promise<void> {
+    this.themeMode = validThemeMode(value);
+    await settingsStore.putString(KEY_THEME_MODE, this.themeMode);
+    applyThemeMode(this.themeMode, this.amoledBlack);
+  }
+
+  /** AMOLED 纯黑：只影响背景类 token，文字/强调色沿用 dark 那套。 */
+  private async setAmoledBlack(value: boolean): Promise<void> {
+    this.amoledBlack = value;
+    await settingsStore.putBool(KEY_AMOLED_BLACK, value);
+    applyThemeMode(this.themeMode, value);
+  }
+
+  /** 当前是否处于深色（跟随系统档位由 ThemeState 判定）。 */
+  private get themeIsDark(): boolean {
+    return themeState().isDark;
+  }
+
+  private themeModeLabel(): string {
+    if (this.themeMode === THEME_DARK) {
+      return '深色';
     }
-    const mode = dark ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
-      ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
-    try {
-      ctx.getApplicationContext().setColorMode(mode);
-    } catch (error) {
-      this.showToast('主题切换失败');
+    if (this.themeMode === THEME_LIGHT) {
+      return '亮色';
     }
+    // 跟随系统：把系统当前实际是亮还是暗一并显示出来，
+    // 否则"系统本来就是深色、选跟随系统仍是深色"会被误认为开关没生效
+    return themeState().systemDark ? '跟随系统 · 当前深色' : '跟随系统 · 当前亮色';
   }
 
   private async applyStatusBar(hidden: boolean): Promise<void> {
@@ -373,18 +456,12 @@ export struct SettingsPage {
       return;
     }
     try {
-      const mainWindow = await window.getLastWindow(ctx);
-      await mainWindow.setWindowSystemBarEnable(hidden ? ['navigation'] : ['status', 'navigation']);
+      // 与冷启动同一份共享实现（旧整组接口运行中调用会把小白条弄没——本轮实测根因）
+      await applyStatusBarVisibility(ctx, hidden);
     } catch (error) {
       const be = error as BusinessError;
       this.showToast('状态栏设置失败：' + be.message);
     }
-  }
-
-  private async setDarkMode(value: boolean): Promise<void> {
-    this.darkMode = value;
-    await settingsStore.putBool(KEY_DARK_MODE, value);
-    this.applyTheme(value);
   }
 
   private async setHideStatusBar(value: boolean): Promise<void> {
@@ -396,6 +473,12 @@ export struct SettingsPage {
   private async selectReadMode(value: string): Promise<void> {
     this.readMode = value;
     await settingsStore.putString(KEY_READ_MODE, value);
+  }
+
+  /** 阅读方向（左开本/右开本）：写库即生效，阅读器读到后立刻换 Swiper 的 RTL 与点击分区。 */
+  private async selectReadDirection(value: string): Promise<void> {
+    this.readDirection = this.validReadDirection(value);
+    await settingsStore.putString(KEY_READ_DIRECTION, this.readDirection);
   }
 
   private async selectSourceProfile(value: string): Promise<void> {
@@ -413,9 +496,142 @@ export struct SettingsPage {
     await settingsStore.putString(KEY_CHAPTER_SOURCE, value);
   }
 
+  private async selectReaderPrefetch(value: number): Promise<void> {
+    this.readerPrefetch = value;
+    await settingsStore.putInt(KEY_READER_PREFETCH_COUNT, value);
+  }
+
   private async selectCacheLimit(value: number): Promise<void> {
     this.imageCacheLimitMb = value;
     await settingsStore.putInt(KEY_IMAGE_CACHE_LIMIT_MB, value);
+  }
+
+  /** 只读统计：下载占用复用 DownloadStore 的目录信息，缓存占用来自 context.cacheDir。 */
+  private async refreshStorageStats(): Promise<void> {
+    if (this.statsBusy || this.clearing) {
+      return;
+    }
+    this.statsBusy = true;
+    try {
+      const stats = await collectStorageStats();
+      this.downloadBytes = stats.downloadBytes;
+      this.cacheBytes = stats.cacheBytes;
+      this.comicCount = stats.comicCount;
+      this.chapterCount = stats.chapterCount;
+      this.pendingChapterCount = stats.pendingChapterCount;
+      if (stats.ready) {
+        this.storageLabel = '已用 ' + formatBytes(stats.downloadBytes + stats.cacheBytes);
+        let summary = '离线下载 ' + formatBytes(stats.downloadBytes) +
+          ' · 应用缓存 ' + formatBytes(stats.cacheBytes);
+        if (stats.pendingChapterCount > 0) {
+          summary += ' · ' + stats.pendingChapterCount + ' 章未完成将保留';
+        }
+        this.storageSummary = summary;
+      } else {
+        this.storageLabel = '统计失败';
+        this.storageSummary = stats.errorText;
+      }
+    } catch (error) {
+      this.storageLabel = '统计失败';
+      this.storageSummary = '统计失败，请稍后重试';
+    } finally {
+      this.statsBusy = false;
+    }
+  }
+
+  private toggleStoragePanel(): void {
+    if (this.clearing) {
+      return;
+    }
+    this.storagePanelOpen = !this.storagePanelOpen;
+    if (this.storagePanelOpen) {
+      this.refreshStorageStats();
+    } else {
+      this.storageActionNote = '';
+    }
+  }
+
+  /**
+   * 二段式确认的第一段：点选项按钮 → 系统弹窗二次确认。
+   * 取消、点遮罩、弹窗异常都当作「未确认」，不执行任何删除。
+   */
+  private async confirmStorageAction(downloads: boolean): Promise<void> {
+    if (this.clearing || this.statsBusy) {
+      return;
+    }
+    let message = '';
+    if (downloads) {
+      message = '将删除全部已下载完成的章节（约 ' + formatBytes(this.downloadBytes) +
+        '，共 ' + this.chapterCount + ' 章），删除后不可恢复。';
+      if (this.pendingChapterCount > 0) {
+        message += '进行中/未完成的 ' + this.pendingChapterCount + ' 章会保留。';
+      }
+    } else {
+      message = '将清理约 ' + formatBytes(this.cacheBytes) +
+        ' 应用缓存（含 ArkWeb 网页缓存），只影响可重新下载的数据，不影响离线下载与设置。';
+    }
+    try {
+      const response = await this.getUIContext().getPromptAction().showDialog({
+        title: downloads ? '清空离线下载？' : '清理应用缓存？',
+        message: message,
+        buttons: [
+          { text: '取消', color: $r('app.color.secondary_text') },
+          { text: downloads ? '确认清空' : '确认清理', color: $r('app.color.accent') }
+        ],
+        backgroundColor: themeBackground('surface', themeState().amoledActive, themeState().themeRevision),
+        backgroundBlurStyle: BlurStyle.NONE
+      });
+      if (response.index !== 1) {
+        this.storageActionNote = '已取消，未删除任何文件';
+        return;
+      }
+    } catch (error) {
+      this.storageActionNote = '确认弹窗不可用，未执行清理';
+      return;
+    }
+    if (downloads) {
+      await this.runClearDownloads();
+    } else {
+      await this.runClearCache();
+    }
+  }
+
+  private async runClearCache(): Promise<void> {
+    if (this.clearing) {
+      return;
+    }
+    this.clearing = true;
+    this.storageActionNote = '正在清理应用缓存…';
+    try {
+      const result = await clearAppCache();
+      this.storageActionNote = result.note;
+      this.showToast(result.ok ? '已清理应用缓存' : '清理未完成');
+    } catch (error) {
+      this.storageActionNote = '清理失败：未知错误';
+      this.showToast('清理缓存失败');
+    } finally {
+      this.clearing = false;
+      await this.refreshStorageStats();
+    }
+  }
+
+  private async runClearDownloads(): Promise<void> {
+    if (this.clearing) {
+      return;
+    }
+    this.clearing = true;
+    this.storageActionNote = '正在清理离线下载…';
+    try {
+      const result = await clearDownloads();
+      this.storageActionNote = result.note;
+      this.showToast(result.ok ? '已清理离线下载' : '清理未完成');
+    } catch (error) {
+      this.storageActionNote = '清理失败：未知错误';
+      this.showToast('清理离线下载失败');
+    } finally {
+      this.clearing = false;
+      await this.refreshStorageStats();
+    }
   }
 
   private async setManualDomain(url: string): Promise<void> {
@@ -476,7 +692,7 @@ export struct SettingsPage {
           .height(40)
           .fontSize(28)
           .fontColor($r('app.color.primary_text'))
-          .backgroundColor($r('app.color.surface_variant'))
+          .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
           .onClick(() => this.onBack())
         Column({ space: 2 }) {
           Text('设置')
@@ -496,16 +712,57 @@ export struct SettingsPage {
       Scroll() {
         Column({ space: 10 }) {
           SettingsSectionHeader({ index: '01', title: '外观', subtitle: '主题与系统界面' })
-          Column() {
-            SettingsSwitchRow({
-              title: '夜间模式',
-              subtitle: '开启时固定深色；关闭时跟随系统',
-              value: this.darkMode,
-              onChange: (value: boolean): void => {
-                this.setDarkMode(value);
-              }
+          Column({ space: 12 }) {
+            SettingsValueHeader({
+              title: '主题模式',
+              value: this.themeModeLabel()
             })
-            SettingsRule()
+            Text('跟随系统 / 亮色 / 深色，切换后立即生效，无需重启')
+              .fontSize(11)
+              .lineHeight(16)
+              .fontColor($r('app.color.secondary_text'))
+              .width('100%')
+            Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+              SettingsSegmentOption({
+                label: '跟随系统', value: THEME_SYSTEM, selected: this.themeMode, itemWidth: '31.5%',
+                onSelect: (value: string): void => {
+                  this.setThemeMode(value);
+                }
+              })
+              SettingsSegmentOption({
+                label: '亮色', value: THEME_LIGHT, selected: this.themeMode, itemWidth: '31.5%',
+                onSelect: (value: string): void => {
+                  this.setThemeMode(value);
+                }
+              })
+              SettingsSegmentOption({
+                label: '深色', value: THEME_DARK, selected: this.themeMode, itemWidth: '31.5%',
+                onSelect: (value: string): void => {
+                  this.setThemeMode(value);
+                }
+              })
+            }
+            .width('100%')
+
+            // AMOLED 只在深色下有意义：亮色/跟随系统(亮)时隐藏，避免误导
+            if (this.themeIsDark) {
+              SettingsRule()
+              SettingsSwitchRow({
+                title: 'AMOLED 纯黑',
+                subtitle: '深色下把背景改为纯黑，更省电',
+                value: this.amoledBlack,
+                onChange: (value: boolean): void => {
+                  this.setAmoledBlack(value);
+                }
+              })
+            }
+          }
+          .width('100%')
+          .padding(15)
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
+          .borderRadius(20)
+
+          Column() {
             SettingsSwitchRow({
               title: '隐藏状态栏',
               subtitle: '立即应用，导航栏保持可用',
@@ -516,7 +773,7 @@ export struct SettingsPage {
             })
           }
           .width('100%')
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
           SettingsSectionHeader({ index: '02', title: '阅读', subtitle: '阅读器接入后沿用这些偏好' })
@@ -542,21 +799,66 @@ export struct SettingsPage {
             .width('100%')
           }
           .width('100%')
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
+          .borderRadius(20)
+
+          // 阅读方向：只在「横向翻页」下有意义，其它模式整行隐藏（不占位、不误导）。
+          if (this.readMode === 'h') {
+            Column({ space: 12 }) {
+              SettingsValueHeader({
+                title: '阅读方向',
+                value: this.readDirection === 'left' ? '左开本' : '右开本'
+              })
+              Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+                SettingsSegmentOption({
+                  label: '左开本', value: 'left', selected: this.readDirection, itemWidth: '48.5%',
+                  onSelect: (value: string): void => { this.selectReadDirection(value); }
+                })
+                SettingsSegmentOption({
+                  label: '右开本', value: 'right', selected: this.readDirection, itemWidth: '48.5%',
+                  onSelect: (value: string): void => { this.selectReadDirection(value); }
+                })
+              }
+              .width('100%')
+              Text('左开本：点左半边、向右划 = 下一页（翻页动画一并镜像）；右开本相反。纵向与条漫不受影响。')
+                .fontSize(11)
+                .lineHeight(17)
+                .fontColor($r('app.color.secondary_text'))
+                .width('100%')
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 16, bottom: 14 })
+            .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
+            .borderRadius(20)
+          }
+
+          Column({ space: 12 }) {
+            SettingsValueHeader({
+              title: '进入阅读器前预载页数',
+              value: this.readerPrefetch + ' 页'
+            })
+            Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+              ForEach(READER_PREFETCH_OPTIONS, (value: number) => {
+                SettingsPrefetchOption({
+                  value: value,
+                  selected: this.readerPrefetch,
+                  onSelect: (selected: number): void => { this.selectReaderPrefetch(selected); }
+                })
+              }, (value: number) => value.toString())
+            }
+            .width('100%')
+            Text('只影响「网页收图」何时进入阅读器：收集到该页数就先进去，之后继续加载；API 取图不受影响。')
+              .fontSize(11)
+              .lineHeight(17)
+              .fontColor($r('app.color.secondary_text'))
+              .width('100%')
+          }
+          .width('100%')
           .padding({ left: 16, right: 16, top: 16, bottom: 14 })
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
           Column() {
-            SettingsSwitchRow({
-              title: '右开本',
-              subtitle: '仅横向模式生效',
-              value: this.r2l,
-              onChange: (value: boolean): void => {
-                this.r2l = value;
-                settingsStore.putBool(KEY_R2L, value);
-              }
-            })
-            SettingsRule()
             SettingsSwitchRow({
               title: '页码角标',
               subtitle: '在阅读页显示当前位置',
@@ -569,7 +871,7 @@ export struct SettingsPage {
             SettingsRule()
             SettingsSwitchRow({
               title: '音量键翻页',
-              subtitle: '阅读器实现后直接生效',
+              subtitle: '音量 +/− 键翻页',
               value: this.volTurn,
               onChange: (value: boolean): void => {
                 this.volTurn = value;
@@ -578,7 +880,7 @@ export struct SettingsPage {
             })
           }
           .width('100%')
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
           SettingsSectionHeader({ index: '03', title: '收图速度', subtitle: '网络不稳时可选择更保守的档位' })
@@ -610,7 +912,7 @@ export struct SettingsPage {
           }
           .width('100%')
           .padding(16)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
           SettingsSectionHeader({ index: '04', title: '浏览方式', subtitle: '选择列表与详情的呈现方式' })
@@ -668,7 +970,7 @@ export struct SettingsPage {
             })
           }
           .width('100%')
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
           SettingsSectionHeader({
@@ -709,7 +1011,7 @@ export struct SettingsPage {
                 .height(40)
                 .fontSize(13)
                 .fontColor($r('app.color.primary_text'))
-                .backgroundColor($r('app.color.surface_variant'))
+                .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
                 .enabled(this.manualMode && !this.probing)
                 .onClick(() => this.restoreAutomaticDomain())
               Button(this.probing ? '测速中…' : '重新测速')
@@ -744,7 +1046,7 @@ export struct SettingsPage {
                   .height(44)
                   .padding({ left: 12, right: 12 })
                   .borderRadius(12)
-                  .backgroundColor($r('app.color.surface_variant'))
+                  .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
                   .onClick(() => this.setManualDomain(url))
                 }, (url: string) => url)
               }
@@ -753,7 +1055,7 @@ export struct SettingsPage {
           }
           .width('100%')
           .padding(16)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
           SettingsSectionHeader({ index: '08', title: '存储', subtitle: '图片缓存不包含离线下载' })
@@ -788,32 +1090,136 @@ export struct SettingsPage {
             SettingsRule()
             Row({ space: 12 }) {
               Column({ space: 3 }) {
-                Text('清理缓存')
-                  .fontSize(15)
-                  .fontColor($r('app.color.primary_text'))
-                Text(this.cacheNote)
+                Row() {
+                  Text('缓存统计与清理')
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.primary_text'))
+                  Blank()
+                  Text(this.storageLabel)
+                    .fontSize(12)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.accent'))
+                }
+                .width('100%')
+                Text(this.storageSummary)
                   .fontSize(12)
                   .lineHeight(18)
                   .fontColor($r('app.color.secondary_text'))
+                  .width('100%')
               }
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1)
-              Button('清理')
-                .type(ButtonType.Normal)
-                .height(38)
+              Text(this.storagePanelOpen ? '收起' : '清理')
                 .fontSize(13)
+                .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.primary'))
+                .padding({ left: 13, right: 13, top: 9, bottom: 9 })
                 .backgroundColor($r('app.color.accent_soft'))
-                .onClick(() => {
-                  this.cacheNote = '缓存模块尚未接入，未删除任何文件';
-                  this.showToast('清理缓存功能建设中');
-                })
+                .borderRadius(10)
             }
             .width('100%')
+            .onClick(() => this.toggleStoragePanel())
+
+            if (this.storagePanelOpen) {
+              SettingsRule()
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Row() {
+                    Text('应用缓存（含 ArkWeb）')
+                      .fontSize(14)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.primary_text'))
+                    Blank()
+                    Text(formatBytes(this.cacheBytes))
+                      .fontSize(12)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.accent'))
+                  }
+                  .width('100%')
+                  Text('网页缓存等运行时数据，可重新下载；不含离线下载')
+                    .fontSize(11)
+                    .lineHeight(16)
+                    .fontColor($r('app.color.secondary_text'))
+                    .width('100%')
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+                Button('清理缓存')
+                  .type(ButtonType.Normal)
+                  .height(34)
+                  .fontSize(12)
+                  .fontColor($r('app.color.primary'))
+                  .backgroundColor($r('app.color.accent_soft'))
+                  .borderRadius(10)
+                  .enabled(!this.clearing)
+                  .onClick(() => {
+                    this.confirmStorageAction(false);
+                  })
+              }
+              .width('100%')
+              .padding({ top: 12, bottom: 6 })
+
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Row() {
+                    Text('离线下载')
+                      .fontSize(14)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.primary_text'))
+                    Blank()
+                    Text(formatBytes(this.downloadBytes))
+                      .fontSize(12)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.accent'))
+                  }
+                  .width('100%')
+                  Text(this.chapterCount > 0 ?
+                    this.comicCount + ' 部 / ' + this.chapterCount + ' 章' +
+                    (this.pendingChapterCount > 0 ?
+                      '；' + this.pendingChapterCount + ' 章进行中或未完成会保留' : '') :
+                    '暂无离线下载')
+                    .fontSize(11)
+                    .lineHeight(16)
+                    .fontColor($r('app.color.secondary_text'))
+                    .width('100%')
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+                Button('清空下载')
+                  .type(ButtonType.Normal)
+                  .height(34)
+                  .fontSize(12)
+                  .fontColor($r('app.color.on_primary'))
+                  .backgroundColor($r('app.color.accent'))
+                  .borderRadius(10)
+                  .enabled(!this.clearing)
+                  .onClick(() => {
+                    this.confirmStorageAction(true);
+                  })
+              }
+              .width('100%')
+              .padding({ top: 6, bottom: 6 })
+
+              if (this.storageActionNote.length > 0) {
+                Text(this.storageActionNote)
+                  .fontSize(11)
+                  .lineHeight(16)
+                  .fontColor($r('app.color.secondary_text'))
+                  .width('100%')
+                  .padding({ top: 4 })
+              }
+              Text('两项清理都要在弹窗里再确认一次；「清空下载」只会删除已下载完成的章节。')
+                .fontSize(11)
+                .lineHeight(16)
+                .fontColor($r('app.color.secondary_text'))
+                .width('100%')
+                .padding({ top: 4 })
+            }
           }
           .width('100%')
           .padding(16)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
 
           SettingsSectionHeader({ index: '09', title: '调试', subtitle: '保留数据层联调入口' })
@@ -843,7 +1249,7 @@ export struct SettingsPage {
           }
           .width('100%')
           .padding(16)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(20)
           .onClick(() => this.onOpenDebug())
           .margin({ bottom: 30 })
@@ -853,9 +1259,10 @@ export struct SettingsPage {
       }
       .layoutWeight(1)
       .scrollBar(BarState.Auto)
+      .edgeEffect(EdgeEffect.Spring)
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
   }
 }

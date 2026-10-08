@@ -2,20 +2,31 @@
  * 应用唯一入口：内部枚举路由 + Stack 条件挂载。
  * P3–P7 可直接替换发现占位或对应建设中页面，不需要引入 Navigation/router。
  */
-import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { common, Configuration, ConfigurationConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { KEY_DARK_MODE, KEY_HIDE_STATUS_BAR, settingsStore } from '../services/SettingsStore';
+import { KEY_HIDE_STATUS_BAR, settingsStore } from '../services/SettingsStore';
+import { applyStatusBarVisibility } from '../services/SystemBars';
 import { AccountPage } from './AccountPage';
 import { DebugPage } from './DebugPage';
-import { DetailPage } from './DetailPage';
+import { DetailPage, handleDetailBack, resetDetailSession } from './DetailPage';
 import { DiscoverPage } from './DiscoverPage';
 import { DownloadChaptersPage, DownloadsPage } from './DownloadsPage';
+import { DownloadManagerPage } from './DownloadManagerPage';
 import { HiddenCollectorHost } from './HiddenCollectorHost';
 import { FavoritesPage, HistoryPage } from './LibraryPages';
-import { ReaderPage } from './ReaderPage';
-import { SearchPage } from './SearchPage';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { ReaderPage, ReaderChapterRef, handleReaderSystemBack } from './ReaderPage';
+import { resetSearchSession, SearchPage } from './SearchPage';
 import { SettingsPage } from './SettingsPage';
+import {
+  applyThemeMode,
+  navBarBackground,
+  navBlurStyle,
+  syncSystemDark,
+  themeBackground,
+  themeState
+} from './ThemeColors';
 import { WebPage } from './WebPage';
 
 export enum AppRoute {
@@ -31,7 +42,8 @@ export enum AppRoute {
   Search = 8,
   Detail = 9,
   DownloadChapters = 10,
-  Reader = 11
+  Reader = 11,
+  DownloadManager = 12
 }
 
 enum ShellTab {
@@ -52,19 +64,90 @@ struct Index {
   @Local webAsRoot: boolean = false;
   @Local readerChapterId: string = '';
   @Local readerChapterName: string = '';
+  @Local readerChapterSize: number = 0;
+  @Local readerSource: string = 'detail';
+  /** 阅读器原地切章所需的章节序列（按 index 升序）；离线入口不提供时留空。 */
+  @Local readerChapterSequence: ReaderChapterRef[] = [];
+  private readerReturnRoute: AppRoute = AppRoute.Detail;
+  private envCallbackId: number = -1;
   private webController: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear(): void {
+    // 新的根页面实例不继承模块级页面缓存；内部覆盖/返回不会重建 Index，因此不受影响
+    resetSearchSession();
+    resetDetailSession();
+    // 跟随系统档位需要知道系统当前亮/暗：读一次当前配置，并订阅后续变化
+    this.applyCurrentColorMode();
+    try {
+      const ctx = AppStorage.get<common.UIAbilityContext>('abilityContext');
+      if (ctx !== undefined) {
+        this.envCallbackId = ctx.getApplicationContext().on('environment', {
+          onConfigurationUpdated: (config: Configuration): void => {
+            syncSystemDark(config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+          },
+          onMemoryLevel: (_level: number): void => {
+          }
+        });
+      }
+    } catch (error) {
+      // 订阅失败不影响主流程，最多是切换系统主题后 AMOLED 判定慢一拍
+    }
     this.applyPersistedChrome();
   }
 
+  aboutToDisappear(): void {
+    if (this.envCallbackId < 0) {
+      return;
+    }
+    try {
+      const ctx = AppStorage.get<common.UIAbilityContext>('abilityContext');
+      if (ctx !== undefined) {
+        ctx.getApplicationContext().off('environment', this.envCallbackId);
+      }
+    } catch (error) {
+      // 解绑失败无副作用
+    }
+    this.envCallbackId = -1;
+  }
+
+  /** 读当前界面的色模式，喂给「跟随系统」判定。启动时强制同步一次真实系统值。 */
+  private applyCurrentColorMode(): void {
+    try {
+      const ctx = AppStorage.get<common.UIAbilityContext>('abilityContext');
+      if (ctx === undefined) {
+        return;
+      }
+      const mode = ctx.config?.colorMode;
+      syncSystemDark(mode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK, true);
+    } catch (error) {
+      // 读不到就保持默认（systemDark=false），跟随系统档位退化为亮色
+    }
+  }
+
+  /** 详情页里的吐槽浮层是否打开。打开时系统返回键应先关浮层，而不是退出详情页。 */
+  @Local detailCommentVisible: boolean = false;
+
   onBackPress(): boolean {
     if (this.route === AppRoute.Reader) {
-      this.route = AppRoute.Detail;
+      // 章末吐槽页上的返回：先退回本章最后一张图，不直接退出阅读器
+      if (handleReaderSystemBack()) {
+        return true;
+      }
+      // 按来源返回（详情进入回详情；下载/离线进入回已下载列表）——与工具栏返回同一口径
+      this.route = this.readerReturnRoute;
       return true;
     }
     if (this.route === AppRoute.Detail) {
-      this.route = this.detailReturnRoute;
+      // 吐槽面板是详情页内的浮层，不是独立路由：先关面板，保留在详情页
+      if (this.detailCommentVisible) {
+        this.detailCommentVisible = false;
+        return true;
+      }
+      // 详情页内部状态（如下载选择模式）：先退模式，再退出详情
+      if (handleDetailBack()) {
+        return true;
+      }
+      this.backFromDetail();
       return true;
     }
     if (this.route === AppRoute.DownloadChapters) {
@@ -72,8 +155,7 @@ struct Index {
       return true;
     }
     if (this.route === AppRoute.Search) {
-      this.route = AppRoute.Shell;
-      this.tab = ShellTab.Discover;
+      this.backFromSearch();
       return true;
     }
     if (this.route === AppRoute.Web) {
@@ -97,7 +179,8 @@ struct Index {
       return true;
     }
     if (this.webAsRoot && (this.route === AppRoute.Account || this.route === AppRoute.Favorites ||
-      this.route === AppRoute.History)) {
+      this.route === AppRoute.History || this.route === AppRoute.Downloads ||
+      this.route === AppRoute.DownloadManager)) {
       this.route = AppRoute.Web;
       return true;
     }
@@ -121,27 +204,42 @@ struct Index {
       return;
     }
     try {
-      const dark = await settingsStore.getBool(KEY_DARK_MODE, false);
+      // 主题三态（system/light/dark）+ AMOLED：旧布尔值由 themeMode() 内部迁移
+      const themeMode = await settingsStore.themeMode();
+      const amoled = await settingsStore.amoledBlack();
       const hidden = await settingsStore.getBool(KEY_HIDE_STATUS_BAR, false);
       const browseSource = await settingsStore.browseSource();
-      const colorMode = dark ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
-        ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
       this.webAsRoot = browseSource === 'webview';
       this.route = this.webAsRoot ? AppRoute.Web : AppRoute.Shell;
       try {
-        ctx.getApplicationContext().setColorMode(colorMode);
+        applyThemeMode(themeMode, amoled);
         const mainWindow = await window.getLastWindow(ctx);
-        await mainWindow.setWindowSystemBarEnable(hidden ? ['navigation'] : ['status', 'navigation']);
-        let insetVp = 8;
+        // 状态栏显隐统一走共享实现（冷启动与设置页「立即应用」同一份，防两条路径漂移——曾因此把小白条弄没）
+        await applyStatusBarVisibility(ctx, hidden);
+          const readNavInset = (): void => {
+          let v = 8;
+          try {
+            const avoid = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+            const measured = mainWindow.getUIContext().px2vp(avoid.bottomRect.height);
+            // 底部浮层与导航指示条的呼吸感：系统上报值偏贴（实测 ~20vp，浮栏下沿与指示条仅差 ~7–9vp），
+            // 统一加下限于 26vp，避免"贴脸"（用户实测反馈 + 视觉判读）。
+            v = Math.max(measured > 0 ? measured : 0, 26);
+          } catch (error) {
+            v = 26;
+          }
+          AppStorage.setOrCreate<number>('navIndicatorVp', v);
+          this.navIndicatorVp = v;
+        };
+        readNavInset();
+        // 系统栏切换后即时读取可能拿到旧值：跟随 avoidArea 变化刷新（只看导航指示条）
         try {
-          const avoid = mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
-          const measuredVp = mainWindow.getUIContext().px2vp(avoid.bottomRect.height);
-          insetVp = measuredVp > 0 ? measuredVp : 8;
+          mainWindow.on('avoidAreaChange', (data: window.AvoidAreaOptions): void => {
+            if (data.type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR) {
+              readNavInset();
+            }
+          });
         } catch (error) {
-          insetVp = 8;
         }
-        AppStorage.setOrCreate<number>('navIndicatorVp', insetVp);
-        this.navIndicatorVp = insetVp;
       } catch (error) {
       }
     } catch (error) {
@@ -163,25 +261,53 @@ struct Index {
     this.route = AppRoute.Detail;
   }
 
-  private openReader(chapterId: string, chapterName: string): void {
+  private openReader(chapterId: string, chapterName: string, chapterSize: number,
+    sequence: ReaderChapterRef[]): void {
     if (chapterId.length === 0) {
       return;
     }
     this.readerChapterId = chapterId;
     this.readerChapterName = chapterName;
+    this.readerChapterSize = chapterSize;
+    this.readerChapterSequence = sequence;
+    this.readerReturnRoute = AppRoute.Detail;
+    this.readerSource = 'detail';
     this.route = AppRoute.Reader;
   }
 
   private backFromReader(): void {
-    this.route = AppRoute.Detail;
+    this.route = this.readerReturnRoute;
+  }
+
+  /** 离线打开：设置 comicId 后走与详情页同一条阅读器路由；本地页数作 chapterSize 兜底。 */
+  private openOfflineReader(comicId: string, chapterUuid: string, chapterName: string,
+    localPageCount: number, sequence: ReaderChapterRef[]): void {
+    if (comicId.length === 0 || chapterUuid.length === 0) {
+      return;
+    }
+    this.selectedMangaId = comicId;
+    this.readerChapterId = chapterUuid;
+    this.readerChapterName = chapterName;
+    this.readerChapterSize = localPageCount;
+    this.readerReturnRoute = AppRoute.DownloadChapters;
+    this.route = AppRoute.Reader;
+    this.readerSource = 'offline';
+    // 离线入口同样持有该漫画「已下载完成章节」的序列：原地切章（工具栏直切 + 到头确认）按序列工作
+    this.readerChapterSequence = sequence;
   }
 
   private backFromSearch(): void {
+    // 只有 Search -> Shell 才结束搜索页存活期；Search -> Detail 不经过这里，继续保留。
+    resetSearchSession();
     this.route = AppRoute.Shell;
     this.tab = ShellTab.Discover;
   }
 
   private backFromDetail(): void {
+    // 顶栏返回与系统返回统一在这里结束详情流程；Detail -> Reader 不经过这里。
+    resetDetailSession();
+    // 离开详情页时清掉浮层标记，避免下次进入残留"面板打开"状态
+    this.detailCommentVisible = false;
     this.route = this.detailReturnRoute;
   }
 
@@ -223,9 +349,78 @@ struct Index {
     this.closePage();
   }
 
+  /**
+   * 下载页返回：与设置/账户同一口径——网页根模式回网页根页，普通模式回「更多」。
+   * 网页根页的 FAB 现在直达下载页，这条返回路径是它的出口。
+   */
+  private backFromDownloads(): void {
+    if (this.webAsRoot) {
+      this.route = AppRoute.Web;
+      return;
+    }
+    this.closePage();
+  }
+
+  /**
+   * 下载管理页返回：与下载页同一口径（网页根回网页根，普通模式回「更多」）。
+   * 该页只从「更多」进入，返回也落回「更多」，与 Downloads 的返回路径完全对齐。
+   */
+  private backFromDownloadManager(): void {
+    if (this.webAsRoot) {
+      this.route = AppRoute.Web;
+      return;
+    }
+    this.closePage();
+  }
+
   private closePage(): void {
     this.route = AppRoute.Shell;
     this.tab = ShellTab.More;
+  }
+
+  /**
+   * 底页（启动页 / Shell / 网页根页）的路由转场。
+   * 出现侧严格 IDENTITY：返回时由上层页"淡出缩走"揭开底页，底页自己不淡入，
+   * 既不给底页默认附加 OPACITY，也避免两层同时淡入把揭示感冲掉。
+   * 离开侧 220ms 淡出：底页与进入页同帧卸载，若底页瞬时消失，
+   * 进入页 Friction 慢启动的前 ~100ms 会露出纯背景。
+   * 转场自带动画，所有 handler 里都不包 animateTo。
+   */
+  private baseTransition(): TransitionEffect {
+    return TransitionEffect.asymmetric(
+      TransitionEffect.IDENTITY,
+      TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.EaseOut })
+    );
+  }
+
+  /**
+   * 上下层级页（详情/阅读器/搜索/设置/网页/下载系等）的路由转场。
+   * 进入＝减速：280ms Curve.Friction（≈cubic-bezier(0.2,0,0.2,1)）+ 0.94 轻缩放 + 淡入；
+   * 退出＝加速且更短：180ms Curve.EaseIn + 缩到 0.96 + 淡出。
+   */
+  private pushTransition(): TransitionEffect {
+    return TransitionEffect.asymmetric(
+      TransitionEffect.OPACITY
+        .combine(TransitionEffect.scale({ x: 0.94, y: 0.94 }))
+        .animation({ duration: 280, curve: Curve.Friction }),
+      TransitionEffect.OPACITY
+        .combine(TransitionEffect.scale({ x: 0.96, y: 0.96 }))
+        .animation({ duration: 180, curve: Curve.EaseIn })
+    );
+  }
+
+  /**
+   * 底栏「发现 ↔ 更多」同级 Tab 切换：约 120ms 极轻交叉淡入。
+   * 两个 Tab 视图都是 100% 高，必须留在 Shell 那层 Stack 里同帧叠放（退场侧淡出）；
+   * 一旦回到流式排布，退场视图还占着一整屏高度，新列表会被顶出视口。
+   * 这是页内 Tab 切换，与上层页的路由转场（280/180/220）互不相干，不共用参数。
+   * 转场自带动画，切 Tab 的 handler 里不包 animateTo。
+   */
+  private tabFadeTransition(): TransitionEffect {
+    return TransitionEffect.asymmetric(
+      TransitionEffect.OPACITY.animation({ duration: 120, curve: Curve.EaseOut }),
+      TransitionEffect.OPACITY.animation({ duration: 100, curve: Curve.EaseIn })
+    );
   }
 
   build() {
@@ -233,9 +428,61 @@ struct Index {
       Column()
         .width('100%')
         .height('100%')
-        .backgroundColor($r('app.color.page_background'))
+        .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
 
+      // ===== 底页（z 最低）：Shell / 网页根页 / 启动页 =====
+      // 转场挂在路由挂载点上；同级的「发现 ↔ 更多」Tab 切换挂自己的极轻交叉淡入（120/100ms）。
+      // 子节点按"层级由浅到深"排列：转场期间新旧两页同帧共存，下面的先画、上面的后画，
+      // 推入时新页在上、返回时被退出的上层页揭开——顺序反了就会把退出动画盖掉。
+      if (this.route === AppRoute.Shell) {
+        // Tab 视图的承接容器：两个分支都塞在同一个 Stack 里同帧叠放，
+        // 退场的一支原地淡出、不再占流式位置，底栏 BottomBar 始终排在它们之后（z 在上）。
+        Stack({ alignContent: Alignment.Bottom }) {
+          if (this.tab === ShellTab.Discover) {
+            DiscoverPage({
+              bottomInset: 48,
+              onSearch: (): void => this.openRoute(AppRoute.Search),
+              onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Shell)
+            })
+            .transition(this.tabFadeTransition())
+          } else {
+            MorePage({
+              bottomInset: 48,
+              onOpen: (route: AppRoute): void => this.openRoute(route)
+            })
+            .transition(this.tabFadeTransition())
+          }
+          BottomBar({
+            selected: this.tab,
+            navIndicatorVp: this.navIndicatorVp,
+            onSelect: (tab: ShellTab): void => {
+              this.tab = tab;
+            }
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+        // 网页根模式下 Shell 不可达；万一到达按上层页处理
+        .transition(this.webAsRoot ? this.pushTransition() : this.baseTransition())
+      }
+
+      if (this.route === AppRoute.Web) {
+        WebPage({
+          controller: this.webController,
+          showBack: !this.webAsRoot,
+          onExit: (): void => this.closePage(),
+          onOpenSettings: (): void => this.openSettingsFromWeb(),
+          // 网页根页 FAB 单击 = 我的下载（设置仍由 GM openSettings / 更多页到达）
+          onOpenDownloads: (): void => this.openRoute(AppRoute.Downloads),
+          onOpenAccount: (): void => this.openRoute(AppRoute.Account)
+        })
+        // 网页根模式下它是底页；普通模式下它是从「更多」推入的上层页
+        .transition(this.webAsRoot ? this.baseTransition() : this.pushTransition())
+      }
+
+      // 启动页排在底页之上：它退出时淡出，正好盖住同帧挂载的底页（否则启动页在下层会被直接切掉）
       if (this.route === AppRoute.Startup) {
         Column({ space: 12 }) {
           LoadingProgress()
@@ -249,59 +496,16 @@ struct Index {
         .justifyContent(FlexAlign.Center)
         .width('100%')
         .height('100%')
+        .transition(this.baseTransition())
       }
 
-      if (this.route === AppRoute.Shell) {
-        Stack({ alignContent: Alignment.Bottom }) {
-          if (this.tab === ShellTab.Discover) {
-            DiscoverPage({
-              bottomInset: 48,
-              onSearch: (): void => this.openRoute(AppRoute.Search),
-              onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Shell)
-            })
-          } else {
-            MorePage({
-              bottomInset: 48,
-              onOpen: (route: AppRoute): void => this.openRoute(route)
-            })
-          }
-          BottomBar({
-            selected: this.tab,
-            navIndicatorVp: this.navIndicatorVp,
-            onSelect: (tab: ShellTab): void => {
-              this.tab = tab;
-            }
-          })
-        }
-        .width('100%')
-        .height('100%')
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      }
-
+      // ===== 上层页：层级由浅到深 =====
       if (this.route === AppRoute.Search) {
         SearchPage({
           onBack: (): void => this.backFromSearch(),
           onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Search)
         })
-      }
-
-      if (this.route === AppRoute.Detail) {
-        DetailPage({
-          mangaId: this.selectedMangaId,
-          onBack: (): void => this.backFromDetail(),
-          onOpenReader: (chapterId: string, chapterName: string): void => {
-            this.openReader(chapterId, chapterName);
-          }
-        })
-      }
-
-      if (this.route === AppRoute.Reader) {
-        ReaderPage({
-          comicId: this.selectedMangaId,
-          chapterId: this.readerChapterId,
-          chapterName: this.readerChapterName,
-          onExit: (): void => this.backFromReader()
-        })
+        .transition(this.pushTransition())
       }
 
       if (this.route === AppRoute.Account) {
@@ -310,6 +514,7 @@ struct Index {
           onOpenFavorites: (): void => this.openRoute(AppRoute.Favorites),
           onOpenHistory: (): void => this.openRoute(AppRoute.History)
         })
+        .transition(this.pushTransition())
       }
 
       if (this.route === AppRoute.Favorites) {
@@ -318,6 +523,7 @@ struct Index {
           onOpenAccount: (): void => this.openRoute(AppRoute.Account),
           onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.Favorites)
         })
+        .transition(this.pushTransition())
       }
 
       if (this.route === AppRoute.History) {
@@ -326,21 +532,35 @@ struct Index {
           onOpenAccount: (): void => this.openRoute(AppRoute.Account),
           onOpenDetail: (id: string): void => this.openDetail(id, AppRoute.History)
         })
+        .transition(this.pushTransition())
       }
 
       if (this.route === AppRoute.Downloads) {
         DownloadsPage({
-          onBack: (): void => this.closePage(),
+          onBack: (): void => this.backFromDownloads(),
           onOpenComic: (directory: string, name: string): void => this.openDownloadComic(directory, name)
         })
+        .transition(this.pushTransition())
+      }
+
+      if (this.route === AppRoute.DownloadManager) {
+        DownloadManagerPage({
+          onBack: (): void => this.backFromDownloadManager()
+        })
+        .transition(this.pushTransition())
       }
 
       if (this.route === AppRoute.DownloadChapters) {
         DownloadChaptersPage({
           comicDirectory: this.selectedDownloadDirectory,
           comicName: this.selectedDownloadName,
-          onBack: (): void => this.openRoute(AppRoute.Downloads)
+          onBack: (): void => this.openRoute(AppRoute.Downloads),
+          onOpenOfflineReader: (comicId: string, chapterUuid: string, chapterName: string,
+            localPageCount: number, sequence: ReaderChapterRef[]): void => {
+            this.openOfflineReader(comicId, chapterUuid, chapterName, localPageCount, sequence);
+          }
         })
+        .transition(this.pushTransition())
       }
 
       if (this.route === AppRoute.Settings) {
@@ -348,22 +568,44 @@ struct Index {
           onBack: (): void => this.backFromSettings(),
           onOpenDebug: (): void => this.openRoute(AppRoute.Debug)
         })
+        .transition(this.pushTransition())
       }
 
       if (this.route === AppRoute.Debug) {
         DebugPage({
           onBack: (): void => this.openRoute(AppRoute.Settings)
         })
+        .transition(this.pushTransition())
       }
 
-      if (this.route === AppRoute.Web) {
-        WebPage({
-          controller: this.webController,
-          showBack: !this.webAsRoot,
-          onExit: (): void => this.closePage(),
-          onOpenSettings: (): void => this.openSettingsFromWeb(),
-          onOpenAccount: (): void => this.openRoute(AppRoute.Account)
+      if (this.route === AppRoute.Detail) {
+        DetailPage({
+          mangaId: this.selectedMangaId,
+          commentVisible: this.detailCommentVisible,
+          commentVisibleChange: (visible: boolean): void => {
+            this.detailCommentVisible = visible;
+          },
+          onBack: (): void => this.backFromDetail(),
+          onOpenReader: (chapterId: string, chapterName: string, chapterSize: number,
+            sequence: ReaderChapterRef[]): void => {
+            this.openReader(chapterId, chapterName, chapterSize, sequence);
+          }
         })
+        .transition(this.pushTransition())
+      }
+
+      // 阅读器最上层：详情进阅读器、下载章节进阅读器两条路都要压在对方之上（不动阅读器内部任何逻辑）
+      if (this.route === AppRoute.Reader) {
+        ReaderPage({
+          comicId: this.selectedMangaId,
+          chapterId: this.readerChapterId,
+          chapterName: this.readerChapterName,
+          chapterSize: this.readerChapterSize,
+          chapterSequence: this.readerChapterSequence,
+          offlineOnly: this.readerSource === 'offline',
+          onExit: (): void => this.backFromReader()
+        })
+        .transition(this.pushTransition())
       }
 
       // 隐藏收图页：常驻但不可见、不吃触摸，供「网页收图」图源使用。
@@ -371,7 +613,7 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
   }
 }
 
@@ -379,6 +621,8 @@ struct Index {
 struct MorePage {
   @Param bottomInset: number = 78;
   @Event onOpen: (route: AppRoute) => void = (_route: AppRoute) => {};
+  /** 当前按压中的入口行：同一时刻只会有一根手指压着一行，多行共用这一份状态即可。 */
+  @Local pressedRoute: AppRoute | null = null;
 
   build() {
     Column() {
@@ -395,7 +639,8 @@ struct MorePage {
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .padding({ left: 20, right: 20, top: 22, bottom: 14 })
+      // 与发现页头部对齐（top/bottom 相同），避免切 Tab 时品牌行高低跳动
+      .padding({ left: 20, right: 20, top: 18, bottom: 12 })
 
       Scroll() {
         Column({ space: 14 }) {
@@ -426,8 +671,23 @@ struct MorePage {
           }
           .width('100%')
           .padding(18)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(22)
+          // 与下面的入口行同一档按压手感：0.95 / 160ms FastOutSlowIn
+          .scale({
+            x: this.pressedRoute === AppRoute.Account ? 0.95 : 1,
+            y: this.pressedRoute === AppRoute.Account ? 0.95 : 1
+          })
+          .animation({ duration: 160, curve: Curve.FastOutSlowIn })
+          .onTouch((event: TouchEvent): void => {
+            if (event.type === TouchType.Down) {
+              this.pressedRoute = AppRoute.Account;
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              if (this.pressedRoute === AppRoute.Account) {
+                this.pressedRoute = null;
+              }
+            }
+          })
           .onClick(() => this.onOpen(AppRoute.Account))
 
           this.groupLabel('我的内容')
@@ -437,9 +697,11 @@ struct MorePage {
             this.menuRow('↺', '历史', '最近浏览记录', AppRoute.History)
             this.rule()
             this.menuRow('↓', '我的下载', '离线漫画与章节', AppRoute.Downloads)
+            this.rule()
+            this.menuRow('◷', '下载管理', '进行中与失败的任务', AppRoute.DownloadManager)
           }
           .width('100%')
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(22)
 
           this.groupLabel('应用')
@@ -449,18 +711,19 @@ struct MorePage {
             this.menuRow('◎', '网页版', '打开移动版源站页面', AppRoute.Web)
           }
           .width('100%')
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(22)
         }
         .width('100%')
         .padding({ left: 16, right: 16, bottom: this.bottomInset })
       }
       .layoutWeight(1)
+      .edgeEffect(EdgeEffect.Spring)
       .scrollBar(BarState.Off)
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 
@@ -512,6 +775,18 @@ struct MorePage {
     }
     .width('100%')
     .padding({ left: 14, right: 16, top: 13, bottom: 13 })
+    // 入口行按压反馈：0.95 / 160ms FastOutSlowIn，与卡片同一档手感（页面切换另有 280ms 转场）
+    .scale({ x: this.pressedRoute === route ? 0.95 : 1, y: this.pressedRoute === route ? 0.95 : 1 })
+    .animation({ duration: 160, curve: Curve.FastOutSlowIn })
+    .onTouch((event: TouchEvent): void => {
+      if (event.type === TouchType.Down) {
+        this.pressedRoute = route;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        if (this.pressedRoute === route) {
+          this.pressedRoute = null;
+        }
+      }
+    })
     .onClick(() => this.onOpen(route))
   }
 }
@@ -549,8 +824,10 @@ struct BottomBar {
       .width('100%')
       .height(56)
       .padding({ left: 6, right: 6, top: 5, bottom: 5 })
-      .backgroundColor($r('app.color.nav_surface'))
-      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+      .backgroundColor(navBarBackground(themeState().isDark, themeState().amoledActive,
+        themeState().themeRevision))
+      // 深色下用不透明底 + 无材质：厚毛玻璃会把底栏整体提亮，压低未选中文字的对比
+      .backgroundBlurStyle(navBlurStyle(themeState().isDark))
       .borderRadius(28)
       .shadow({ radius: 18, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 6 })
     }

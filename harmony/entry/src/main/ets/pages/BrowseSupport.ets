@@ -7,8 +7,41 @@ import { ApiClient, ApiException } from '../services/ApiClient';
 import { CopyApiSource } from '../services/CopyApiSource';
 import { authStore, CookieEntry } from '../services/AuthStore';
 import { MangaSummary } from '../model/Models';
+import { imageCacheTrim } from '../services/ImageCacheTrim';
+import { themeBackground, themeState } from './ThemeColors';
 
 export const BROWSE_PAGE_SIZE: number = 21;
+
+/** 网格左右各 16vp 的内边距：量到的容器宽要减掉它，阈值比的是"可用宽度"。 */
+export const GRID_SIDE_PADDING: number = 32;
+
+/**
+ * 网格列数自适应（对齐 Flutter 侧口径：2/3/4/5 列，阈值 520/760/1000）。
+ * 入参是网格的可用宽度（vp，已减去左右内边距）；非正数按 0 处理 → 2 列。
+ */
+export function gridColumnsForWidth(width: number): number {
+  const value = width > 0 ? width : 0;
+  if (value < 520) {
+    return 2;
+  }
+  if (value < 760) {
+    return 3;
+  }
+  if (value < 1000) {
+    return 4;
+  }
+  return 5;
+}
+
+/** 列数 → columnsTemplate（每列 1fr，如三列即三个 1fr）：模板由列数生成，页面里不写死固定列数。 */
+export function gridColumnsTemplate(count: number): string {
+  const columns = count < 2 ? 2 : count;
+  let template = '1fr';
+  for (let i = 1; i < columns; i++) {
+    template += ' 1fr';
+  }
+  return template;
+}
 
 const browseDomains: ApiDomainManager = new ApiDomainManager();
 const browseClient: ApiClient = new ApiClient(browseDomains);
@@ -267,53 +300,91 @@ export class MangaPagingController {
   }
 }
 
+/**
+ * 「占位/加载 ↔ 内容」交叉溶解：进场 200ms 淡入、退场 160ms 淡出。
+ * 转场自带动画，不包 animateTo；配套的容器一律用 Stack 原地叠放，
+ * 让退场的一支不占据流式布局位置（否则占位还在流里，内容会被顶一下再弹回）。
+ */
+export function fadeSwapTransition(): TransitionEffect {
+  return TransitionEffect.asymmetric(
+    TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.EaseOut }),
+    TransitionEffect.OPACITY.animation({ duration: 160, curve: Curve.EaseIn })
+  );
+}
+
 @ComponentV2
 struct MangaGridCard {
   @Param item: MangaSummary = new MangaSummary('', '', '', '');
   @Event onOpen: (id: string) => void = (_id: string) => {};
+  /** TouchDown 即时按压：不等 onClick；Up / Cancel（手指被滚动抢走）都要复位，别卡在缩小态。 */
+  @Local pressed: boolean = false;
 
   build() {
-    Column({ space: 0 }) {
-      Stack({ alignContent: Alignment.Center }) {
-        Column()
-          .width('100%')
-          .height('100%')
-          .backgroundColor($r('app.color.surface_variant'))
-        Image(this.item.cover)
-          .alt($r('app.media.app_icon'))
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-          .borderRadius({ topLeft: 18, topRight: 18 })
-      }
-      .width('100%')
-      .height(228)
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column({ space: 0 }) {
+        Stack({ alignContent: Alignment.Center }) {
+          Column()
+            .width('100%')
+            .height('100%')
+            .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
+          Image(this.item.cover)
+            .alt($r('app.media.app_icon'))
+            .width('100%')
+            .height('100%')
+            .objectFit(ImageFit.Cover)
+            .borderRadius({ topLeft: 18, topRight: 18 })
+        }
+        .width('100%')
+        .height(228)
 
-      Column({ space: 5 }) {
-        Text(this.item.title.length > 0 ? this.item.title : '未命名漫画')
-          .fontSize(15)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.primary_text'))
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
-        Text(this.item.author.length > 0 ? this.item.author : '作者未标注')
-          .fontSize(12)
-          .fontColor($r('app.color.secondary_text'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
+        Column({ space: 5 }) {
+          Text(this.item.title.length > 0 ? this.item.title : '未命名漫画')
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.primary_text'))
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+          Text(this.item.author.length > 0 ? this.item.author : '作者未标注')
+            .fontSize(12)
+            .fontColor($r('app.color.secondary_text'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
+        .height(66)
+        .padding({ left: 12, right: 12, top: 9, bottom: 8 })
       }
-      .alignItems(HorizontalAlign.Start)
       .width('100%')
-      .height(66)
-      .padding({ left: 12, right: 12, top: 9, bottom: 8 })
+      .height('100%')
+
+      // 按压叠层：只借既有文字色，不新增色值——亮色主题是压一层黑（微暗），暗色主题是抬一层白（微亮）
+      Column()
+        .width('100%')
+        .height('100%')
+        .borderRadius(18)
+        .backgroundColor($r('app.color.primary_text'))
+        .opacity(this.pressed ? 0.06 : 0)
+        // 与根节点同参数：有的版本 animation 不跨节点下推，少了这条叠层会"跳一下"
+        .animation({ duration: 160, curve: Curve.FastOutSlowIn })
     }
     .width('100%')
     .height(294)
-    .backgroundColor($r('app.color.surface'))
+    .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
     .borderRadius(18)
     .shadow({ radius: 8, color: $r('app.color.card_shadow'), offsetX: 0, offsetY: 3 })
+    // 按下轻缩放 0.95：160ms FastOutSlowIn，落手与回弹同一段曲线
+    .scale({ x: this.pressed ? 0.95 : 1, y: this.pressed ? 0.95 : 1 })
+    .animation({ duration: 160, curve: Curve.FastOutSlowIn })
+    .onTouch((event: TouchEvent): void => {
+      if (event.type === TouchType.Down) {
+        this.pressed = true;
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.pressed = false;
+      }
+    })
     .onClick(() => this.onOpen(this.item.id))
   }
 }
@@ -329,57 +400,70 @@ export struct BrowseStatePanel {
   @Event onRetry: () => void = () => {};
 
   build() {
-    Column({ space: 12 }) {
+    // 面板内部也是 if/else 换状态（加载 → 报错/空/idle）：Stack 原地叠放 + 交叉溶解，
+    // 退场的一支淡出时不再占据流式位置，容器高度取两者最大值，居中的内容不会被顶一下再弹回。
+    Stack({ alignContent: Alignment.Center }) {
       if (this.state === BrowseLoadState.Loading) {
-        LoadingProgress()
-          .width(36)
-          .height(36)
-          .color($r('app.color.primary'))
-        Text(this.loadingText)
-          .fontSize(14)
-          .fontColor($r('app.color.secondary_text'))
+        Column({ space: 12 }) {
+          LoadingProgress()
+            .width(36)
+            .height(36)
+            .color($r('app.color.primary'))
+          Text(this.loadingText)
+            .fontSize(14)
+            .fontColor($r('app.color.secondary_text'))
+        }
+        .transition(fadeSwapTransition())
       } else if (this.state === BrowseLoadState.Error) {
-        SymbolGlyph($r('sys.symbol.exclamationmark_circle'))
-          .fontSize(34)
-          .fontColor([$r('app.color.accent')])
-        Text('加载失败')
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.primary_text'))
-        Text(this.errorText)
-          .fontSize(13)
-          .lineHeight(19)
-          .fontColor($r('app.color.secondary_text'))
-          .textAlign(TextAlign.Center)
-          .maxLines(3)
-        Button('重试')
-          .type(ButtonType.Normal)
-          .height(40)
-          .fontColor($r('app.color.on_primary'))
-          .backgroundColor($r('app.color.primary'))
-          .borderRadius(13)
-          .onClick(() => this.onRetry())
+        Column({ space: 12 }) {
+          SymbolGlyph($r('sys.symbol.exclamationmark_circle'))
+            .fontSize(34)
+            .fontColor([$r('app.color.accent')])
+          Text('加载失败')
+            .fontSize(18)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.primary_text'))
+          Text(this.errorText)
+            .fontSize(13)
+            .lineHeight(19)
+            .fontColor($r('app.color.secondary_text'))
+            .textAlign(TextAlign.Center)
+            .maxLines(3)
+          Button('重试')
+            .type(ButtonType.Normal)
+            .height(40)
+            .fontColor($r('app.color.on_primary'))
+            .backgroundColor($r('app.color.primary'))
+            .borderRadius(13)
+            .onClick(() => this.onRetry())
+        }
+        .transition(fadeSwapTransition())
       } else if (this.state === BrowseLoadState.Empty) {
-        Text('○')
-          .fontSize(32)
-          .fontColor($r('app.color.secondary_text'))
-        Text(this.emptyTitle)
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.primary_text'))
-        Text(this.emptyDescription)
-          .fontSize(13)
-          .fontColor($r('app.color.secondary_text'))
+        Column({ space: 12 }) {
+          Text('○')
+            .fontSize(32)
+            .fontColor($r('app.color.secondary_text'))
+          Text(this.emptyTitle)
+            .fontSize(17)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.primary_text'))
+          Text(this.emptyDescription)
+            .fontSize(13)
+            .fontColor($r('app.color.secondary_text'))
+        }
+        .transition(fadeSwapTransition())
       } else {
-        SymbolGlyph($r('sys.symbol.magnifyingglass'))
-          .fontSize(32)
-          .fontColor([$r('app.color.secondary_text')])
-        Text(this.idleText)
-          .fontSize(14)
-          .fontColor($r('app.color.secondary_text'))
+        Column({ space: 12 }) {
+          SymbolGlyph($r('sys.symbol.magnifyingglass'))
+            .fontSize(32)
+            .fontColor([$r('app.color.secondary_text')])
+          Text(this.idleText)
+            .fontSize(14)
+            .fontColor($r('app.color.secondary_text'))
+        }
+        .transition(fadeSwapTransition())
       }
     }
-    .justifyContent(FlexAlign.Center)
     .width('100%')
     .height('100%')
     .padding(24)
@@ -423,55 +507,98 @@ export struct PagingFooter {
 @ComponentV2
 export struct MangaGridView {
   @Require @Param controller: MangaPagingController = new MangaPagingController();
+  /** 外部持有的滚动控制器：需要跨页保留滚动位置的页面可传入自己的实例。 */
+  @Param scroller: Scroller = new Scroller();
   @Param bottomPadding: number = 48;
   @Param idleText: string = '准备加载';
   @Event onOpen: (id: string) => void = (_id: string) => {};
+  @Event onScrolled: (offset: number) => void = (_offset: number) => {};
+
+  /** 网格列数（2/3/4/5 随可用宽度自适应）；初值 2 与手机首帧一致，量宽后再调整。 */
+  @Local columns: number = 2;
+
+  aboutToAppear(): void {
+    // 触发点之一（非 Index）：ImageCacheTrim 内部有 45 秒最小间隔 + 单飞，这里的调用是 O(1)
+    imageCacheTrim.maybeTrim();
+  }
+
+  /** 按实测容器宽度更新列数：只有列数真的变了才写 @Local，切列只重排一次、不逐帧抖动。 */
+  private applyColumns(width: number): void {
+    if (!(width > 0)) {
+      return;
+    }
+    const columns = gridColumnsForWidth(width - GRID_SIDE_PADDING);
+    if (columns !== this.columns) {
+      this.columns = columns;
+    }
+  }
 
   build() {
-    if (this.controller.itemCount === 0 && this.controller.state !== BrowseLoadState.Content) {
-      BrowseStatePanel({
-        state: this.controller.state,
-        errorText: this.controller.errorText,
-        idleText: this.idleText,
-        onRetry: (): void => { this.controller.loadFirst(); }
-      })
-    } else {
-      Refresh({ refreshing: this.controller.refreshing }) {
-        Grid() {
-          LazyForEach(this.controller.dataSource, (item: MangaSummary, index: number) => {
+    // 占位面板 ↔ 网格：Stack 原地叠放 + 交叉溶解。退场的一支不再留在流式布局里，
+    // 容器尺寸也固定成 100%，换态时不会把外层 Column 顶一下再弹回。
+    Stack({ alignContent: Alignment.TopStart }) {
+      if (this.controller.itemCount === 0 && this.controller.state !== BrowseLoadState.Content) {
+        BrowseStatePanel({
+          state: this.controller.state,
+          errorText: this.controller.errorText,
+          idleText: this.idleText,
+          onRetry: (): void => { this.controller.loadFirst(); }
+        })
+        .transition(fadeSwapTransition())
+      } else {
+        Refresh({ refreshing: this.controller.refreshing }) {
+          Grid(this.scroller) {
+            LazyForEach(this.controller.dataSource, (item: MangaSummary, index: number) => {
+              GridItem() {
+                MangaGridCard({
+                  item: item,
+                  onOpen: (id: string): void => this.onOpen(id)
+                })
+              }
+            }, (item: MangaSummary, index: number) => item.id + ':' + index.toString())
+
             GridItem() {
-              MangaGridCard({
-                item: item,
-                onOpen: (id: string): void => this.onOpen(id)
+              PagingFooter({
+                loading: this.controller.loadingMore,
+                hasMore: this.controller.hasMore,
+                message: this.controller.footerText,
+                onRetry: (): void => { this.controller.loadMore(); }
               })
             }
-          }, (item: MangaSummary, index: number) => item.id + ':' + index.toString())
-
-          GridItem() {
-            PagingFooter({
-              loading: this.controller.loadingMore,
-              hasMore: this.controller.hasMore,
-              message: this.controller.footerText,
-              onRetry: (): void => { this.controller.loadMore(); }
-            })
+            .columnStart(0)
+            .columnEnd(this.columns - 1)
           }
-          .columnStart(0)
-          .columnEnd(1)
+          .columnsTemplate(gridColumnsTemplate(this.columns))
+          .columnsGap(12)
+          .rowsGap(14)
+          .cachedCount(6)
+          .padding({ left: 16, right: 16, top: 10, bottom: this.bottomPadding })
+          .width('100%')
+          .height('100%')
+          .edgeEffect(EdgeEffect.Spring)
+          .onDidScroll((): void => {
+            // 只关心"当前落在哪"，逐帧位移量在这里没用，交由 Scroller 读偏移
+            try {
+              this.onScrolled(this.scroller.currentOffset().yOffset);
+            } catch (error) {
+              // 容器尚未绑定时拿不到偏移，忽略这一帧
+            }
+          })
+          .onReachEnd(() => this.controller.loadMore())
         }
-        .columnsTemplate('1fr 1fr')
-        .columnsGap(12)
-        .rowsGap(14)
-        .cachedCount(6)
-        .padding({ left: 16, right: 16, top: 10, bottom: this.bottomPadding })
         .width('100%')
         .height('100%')
-        .edgeEffect(EdgeEffect.Spring)
-        .onReachEnd(() => this.controller.loadMore())
+        .pullToRefresh(true)
+        .onRefreshing(() => this.controller.refresh())
+        .transition(fadeSwapTransition())
       }
-      .width('100%')
-      .height('100%')
-      .pullToRefresh(true)
-      .onRefreshing(() => this.controller.refresh())
     }
+    .width('100%')
+    .height('100%')
+    // 容器实测宽度 → 列数（2/3/4/5，阈值 520/760/1000）。占位态也量得到，
+    // 所以网格出现时已经是正确列数；列数变化本身只触发一次重排。
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      this.applyColumns(newArea.width as number);
+    })
   }
 }

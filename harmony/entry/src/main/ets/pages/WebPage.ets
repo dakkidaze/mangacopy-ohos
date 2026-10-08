@@ -6,6 +6,7 @@ import { kMobileUserAgent } from '../services/ApiHeaders';
 import { settingsStore } from '../services/SettingsStore';
 import { UrlManager } from '../services/UrlManager';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { navBarBackground, navBlurStyle, themeBackground, themeState } from './ThemeColors';
 
 const GM_METHODS: string[] = [
   'loadComic',
@@ -97,7 +98,7 @@ struct WebHeader {
         }
         .width(44)
         .height(44)
-        .backgroundColor($r('app.color.surface_variant'))
+        .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
         .hitTestBehavior(HitTestMode.Block)
         .onClick(() => this.onBack())
       }
@@ -140,7 +141,7 @@ struct WebHeader {
     .width('100%')
     .height(64)
     .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-    .backgroundColor($r('app.color.surface'))
+    .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
     // 注意：这里必须是 Default（自身+子节点响应，阻塞兄弟节点）。
     // 用 Block 会「阻塞子节点」→ header 里的返回/刷新按钮全部点不动（已实测踩过）。
     .hitTestBehavior(HitTestMode.Default)
@@ -157,6 +158,7 @@ export struct WebPage {
   @Param showBack: boolean = true;
   @Event onExit: () => void = () => {};
   @Event onOpenSettings: () => void = () => {};
+  @Event onOpenDownloads: () => void = () => {};
   @Event onOpenAccount: () => void = () => {};
 
   @Local title: string = '网页版';
@@ -219,10 +221,16 @@ export struct WebPage {
   private async prepareHome(): Promise<void> {
     try {
       const cached = await UrlManager.bootstrap();
-      if (!cached) {
-        await UrlManager.probe();
-      }
       this.pageUrl = UrlManager.activeUrl;
+      if (!cached) {
+        // 首次无缓存：同步测速选源，再进页（现状保持）
+        await UrlManager.probe();
+        this.pageUrl = UrlManager.activeUrl;
+      } else {
+        // 有缓存先进 + 后台测速：fire-and-forget，只更新 sticky/落盘与提示（lastProbeNote），
+        // 不打断当前页、不自动重载，也不 await。
+        UrlManager.probe().catch((_error: Object): void => {});
+      }
       this.loadPreparedUrl();
     } catch (error) {
       const value = error as Error;
@@ -346,7 +354,8 @@ export struct WebPage {
       if (moved) {
         this.saveFabPosition();
       } else {
-        this.onOpenSettings();
+        // 单击 = 打开「我的下载」（对齐 Flutter 网页版 FAB 语义；设置仍从 GM openSettings / 更多页进）
+        this.onOpenDownloads();
       }
       return;
     }
@@ -549,6 +558,24 @@ export struct WebPage {
           .javaScriptAccess(true)
           .domStorageAccess(true)
           .onlineImageAccess(true)
+          // JS 弹窗自动确认（默认会弹系统对话框，方向相反）：alert/confirm 直接确认，prompt 回空输入。
+          // 依据本机 SDK `ets/component/web.d.ts` 的 WebAttribute：
+          //   onAlert(callback: Callback<OnAlertEvent, boolean>)
+          //   onConfirm(callback: Callback<OnConfirmEvent, boolean>)
+          //   onPrompt(callback: Callback<OnPromptEvent, boolean>)
+          // 返回 true = 应用接管弹窗，需用 JsResult 回执（handleConfirm / handlePromptConfirm）。
+          .onAlert((event: OnAlertEvent): boolean => {
+            event.result.handleConfirm();
+            return true;
+          })
+          .onConfirm((event: OnConfirmEvent): boolean => {
+            event.result.handleConfirm();
+            return true;
+          })
+          .onPrompt((event: OnPromptEvent): boolean => {
+            event.result.handlePromptConfirm('');
+            return true;
+          })
           .onControllerAttached(() => {
             this.onControllerAttached();
           })
@@ -629,7 +656,7 @@ export struct WebPage {
             .width('100%')
             .height(3)
             .color($r('app.color.primary'))
-            .backgroundColor($r('app.color.surface_variant'))
+            .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
         }
 
         if (this.failed) {
@@ -658,7 +685,7 @@ export struct WebPage {
           .justifyContent(FlexAlign.Center)
           .width('calc(100% - 32vp)')
           .padding(22)
-          .backgroundColor($r('app.color.surface'))
+          .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
           .borderRadius(22)
           .margin({ top: 80 })
           .shadow({ radius: 12, color: $r('app.color.card_shadow'), offsetX: 0, offsetY: 4 })
@@ -671,7 +698,7 @@ export struct WebPage {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.page_background'))
+      .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
       .zIndex(0)
 
       WebHeader({
@@ -686,7 +713,7 @@ export struct WebPage {
 
       if (!this.showBack && this.fabVisible && this.fabReady) {
         Row() {
-          SymbolGlyph($r('sys.symbol.gearshape'))
+          SymbolGlyph($r('sys.symbol.arrow_down_circle'))
             .fontSize(23)
             .fontColor([$r('app.color.primary')])
         }
@@ -694,15 +721,16 @@ export struct WebPage {
         .alignItems(VerticalAlign.Center)
         .width(48)
         .height(48)
-        .backgroundColor($r('app.color.nav_surface'))
-        .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+        .backgroundColor(navBarBackground(themeState().isDark, themeState().amoledActive,
+          themeState().themeRevision))
+        .backgroundBlurStyle(navBlurStyle(themeState().isDark))
         .borderRadius(24)
         .shadow({ radius: 14, color: $r('app.color.nav_shadow'), offsetX: 0, offsetY: 5 })
         .position({ x: this.fabX, y: this.fabY })
         .zIndex(8)
         .scale({ x: this.fabPressed ? 0.95 : 1, y: this.fabPressed ? 0.95 : 1 })
         .animation({ duration: 100, curve: Curve.EaseOut })
-        .accessibilityText('打开设置，可拖动')
+        .accessibilityText('打开我的下载，可拖动')
         .onTouch((event: TouchEvent) => {
           this.handleFabTouch(event);
         })
@@ -710,7 +738,7 @@ export struct WebPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
     .onAreaChange((_oldArea: Area, newArea: Area) => {
       const width = newArea.width as number;
       const height = newArea.height as number;

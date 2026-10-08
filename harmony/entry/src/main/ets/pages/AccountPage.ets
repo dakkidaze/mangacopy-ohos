@@ -8,6 +8,7 @@ import {
   reloadBrowseSession,
   syncBrowseSession
 } from './BrowseSupport';
+import { themeBackground, themeState } from './ThemeColors';
 
 @ComponentV2
 export struct AccountPage {
@@ -109,7 +110,7 @@ export struct AccountPage {
         }
         .width(40)
         .height(40)
-        .backgroundColor($r('app.color.surface_variant'))
+        .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
         .onClick(() => this.onBack())
         Column({ space: 2 }) {
           Text('账号')
@@ -164,7 +165,7 @@ export struct AccountPage {
                   .fontColor($r('app.color.primary_text'))
                   .placeholderColor($r('app.color.secondary_text'))
                   .caretColor($r('app.color.primary'))
-                  .backgroundColor($r('app.color.field_background'))
+                  .backgroundColor(themeBackground('field_background', themeState().amoledActive, themeState().themeRevision))
                   .borderRadius(14)
                   .onChange((value: string) => {
                     this.username = value;
@@ -176,7 +177,7 @@ export struct AccountPage {
                   .fontColor($r('app.color.primary_text'))
                   .placeholderColor($r('app.color.secondary_text'))
                   .caretColor($r('app.color.primary'))
-                  .backgroundColor($r('app.color.field_background'))
+                  .backgroundColor(themeBackground('field_background', themeState().amoledActive, themeState().themeRevision))
                   .borderRadius(14)
                   .onChange((value: string) => {
                     this.password = value;
@@ -214,7 +215,7 @@ export struct AccountPage {
             }
             .width('100%')
             .padding(20)
-            .backgroundColor($r('app.color.surface'))
+            .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
             .borderRadius(24)
           } else {
             Column({ space: 18 }) {
@@ -289,7 +290,7 @@ export struct AccountPage {
             .alignItems(HorizontalAlign.Start)
             .width('100%')
             .padding(18)
-            .backgroundColor($r('app.color.surface'))
+            .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
             .borderRadius(20)
           }
         }
@@ -298,10 +299,11 @@ export struct AccountPage {
       }
       .layoutWeight(1)
       .scrollBar(BarState.Auto)
+      .edgeEffect(EdgeEffect.Spring)
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 }

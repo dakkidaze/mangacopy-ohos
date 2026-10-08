@@ -6,6 +6,7 @@ import {
   MangaGridView,
   MangaPagingController
 } from './BrowseSupport';
+import { themeBackground, themeState } from './ThemeColors';
 
 enum DiscoverFeed {
   Popular = 'popular',
@@ -69,6 +70,19 @@ export struct DiscoverPage {
     }
   }
 
+  /**
+   * 「热门 ↔ 最新」交叉淡入：进场 120ms 减速淡入、退场 100ms 加速淡出，与底栏 Tab 同一口径。
+   * 两路网格都是 100% 高，必须放进 Stack 同帧叠放、退场侧原地淡出；
+   * 若留在 Column 的流式排布里，退场网格仍占一整屏高度，新网格会被顶出视口。
+   * 转场自带动画，切 Tab 的 handler 里不包 animateTo。
+   */
+  private feedFadeTransition(): TransitionEffect {
+    return TransitionEffect.asymmetric(
+      TransitionEffect.OPACITY.animation({ duration: 120, curve: Curve.EaseOut }),
+      TransitionEffect.OPACITY.animation({ duration: 100, curve: Curve.EaseIn })
+    );
+  }
+
   build() {
     Column() {
       Row({ space: 12 }) {
@@ -93,7 +107,7 @@ export struct DiscoverPage {
         }
         .width(44)
         .height(44)
-        .backgroundColor($r('app.color.surface'))
+        .backgroundColor(themeBackground('surface', themeState().amoledActive, themeState().themeRevision))
         .shadow({ radius: 7, color: $r('app.color.card_shadow'), offsetX: 0, offsetY: 2 })
         .onClick(() => this.onSearch())
       }
@@ -117,29 +131,37 @@ export struct DiscoverPage {
       .width('calc(100% - 32vp)')
       .height(46)
       .padding(4)
-      .backgroundColor($r('app.color.surface_variant'))
+      .backgroundColor(themeBackground('surface_variant', themeState().amoledActive, themeState().themeRevision))
       .borderRadius(23)
       .margin({ left: 16, right: 16, bottom: 4 })
 
-      if (this.activeFeed === DiscoverFeed.Popular) {
-        MangaGridView({
-          controller: this.popularController,
-          bottomPadding: this.bottomInset,
-          idleText: '准备加载热门漫画',
-          onOpen: (id: string): void => this.onOpenDetail(id)
-        })
-      } else {
-        MangaGridView({
-          controller: this.latestController,
-          bottomPadding: this.bottomInset,
-          idleText: '准备加载最近更新',
-          onOpen: (id: string): void => this.onOpenDetail(id)
-        })
+      // 热门 ↔ 最新：两路网格都是 100% 高，直接挂在 Column 里做条件渲染会让
+      // 退场的一支继续占着流式位置（新网格被顶到屏幕外）；改用 Stack 同帧叠放承接。
+      Stack({ alignContent: Alignment.TopStart }) {
+        if (this.activeFeed === DiscoverFeed.Popular) {
+          MangaGridView({
+            controller: this.popularController,
+            bottomPadding: this.bottomInset,
+            idleText: '准备加载热门漫画',
+            onOpen: (id: string): void => this.onOpenDetail(id)
+          })
+          .transition(this.feedFadeTransition())
+        } else {
+          MangaGridView({
+            controller: this.latestController,
+            bottomPadding: this.bottomInset,
+            idleText: '准备加载最近更新',
+            onOpen: (id: string): void => this.onOpenDetail(id)
+          })
+          .transition(this.feedFadeTransition())
+        }
       }
+      .width('100%')
+      .height('100%')
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(themeBackground('page_background', themeState().amoledActive, themeState().themeRevision))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 }
